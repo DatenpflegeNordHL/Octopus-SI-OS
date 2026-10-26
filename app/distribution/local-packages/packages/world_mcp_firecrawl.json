@@ -11,7 +11,7 @@
     "description": "Firecrawl's MCP server: search the web, scrape and crawl pages into clean markdown, and extract structured data. Needs a Firecrawl API key.",
     "developer": "Firecrawl",
     "category": "plugin",
-    "icon": "sparkles"
+    "icon": "globe"
   },
   "members": [
     {

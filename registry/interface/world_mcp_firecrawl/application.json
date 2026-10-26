@@ -6,7 +6,7 @@
   "category": "plugin",
   "developer": "Firecrawl",
   "version": "1.0.0",
-  "icon": "sparkles",
+  "icon": "globe",
   "logo": "application-logo.svg",
   "interfaces": [
     "world_mcp_firecrawl"
