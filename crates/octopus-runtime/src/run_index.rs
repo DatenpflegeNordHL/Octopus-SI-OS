@@ -5,40 +5,7 @@ use std::sync::Arc;
 use crate::run_record::RunRecord;
 use crate::{CheckpointId, ContentHash, InterfaceId, RunId, RunRecordSnapshot};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct FileFingerprint {
-    len: u64,
-    modified_unix_nanos: Option<u128>,
-    #[cfg(unix)]
-    identity_and_change: (u64, u64, i64, i64),
-}
-
-impl FileFingerprint {
-    fn of(metadata: &std::fs::Metadata) -> Self {
-        let modified_unix_nanos = metadata
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|elapsed| elapsed.as_nanos());
-        Self {
-            len: metadata.len(),
-            modified_unix_nanos,
-            #[cfg(unix)]
-            identity_and_change: {
-                use std::os::unix::fs::MetadataExt;
-                (
-                    metadata.dev(),
-                    metadata.ino(),
-                    metadata.ctime(),
-                    metadata.ctime_nsec(),
-                )
-            },
-        }
-    }
-}
-
 struct RunSlot {
-    fingerprint: FileFingerprint,
     record_hash: Option<ContentHash>,
     record_bytes: Option<Arc<[u8]>>,
     record: Option<Arc<RunRecord>>,
@@ -83,29 +50,26 @@ impl RunRecordsIndex {
                 self.remove(&run);
                 continue;
             }
-            let metadata = match entry.metadata() {
-                Ok(metadata) => metadata,
-                Err(_) => {
-                    self.remove(&run);
-                    continue;
-                }
-            };
             present.insert(run.clone());
-            let fingerprint = FileFingerprint::of(&metadata);
-            if fingerprint.modified_unix_nanos.is_some()
-                && self.slots.get(&run).map(|slot| slot.fingerprint) == Some(fingerprint)
-            {
-                continue;
-            }
             let (record_hash, record_bytes, loaded) = match std::fs::read(entry.path()) {
-                Ok(bytes) => (
-                    Some(ContentHash::of_bytes(&bytes)),
-                    Some(Arc::from(bytes.as_slice())),
-                    RunRecord::from_bytes(&bytes).map(Some),
-                ),
+                Ok(bytes) => {
+                    if self
+                        .slots
+                        .get(&run)
+                        .and_then(|slot| slot.record_bytes.as_deref())
+                        == Some(bytes.as_slice())
+                    {
+                        continue;
+                    }
+                    (
+                        Some(ContentHash::of_bytes(&bytes)),
+                        Some(Arc::from(bytes.as_slice())),
+                        RunRecord::from_bytes(&bytes).map(Some),
+                    )
+                }
                 Err(error) => (None, None, Err(error)),
             };
-            self.install(run, fingerprint, record_hash, record_bytes, loaded);
+            self.install(run, record_hash, record_bytes, loaded);
         }
         let vanished: Vec<RunId> = self
             .slots
@@ -150,7 +114,6 @@ impl RunRecordsIndex {
     fn install(
         &mut self,
         run: RunId,
-        fingerprint: FileFingerprint,
         record_hash: Option<ContentHash>,
         record_bytes: Option<Arc<[u8]>>,
         loaded: std::io::Result<Option<RunRecord>>,
@@ -183,7 +146,6 @@ impl RunRecordsIndex {
         self.slots.insert(
             run,
             RunSlot {
-                fingerprint,
                 record_hash,
                 record_bytes,
                 record,
@@ -504,6 +466,28 @@ mod tests {
                 .len(),
             1
         );
+
+        for (from, to) in [("world_y", "world_x"), ("world_x", "world_y")]
+            .into_iter()
+            .cycle()
+            .take(32)
+        {
+            let bytes = std::fs::read_to_string(&path).unwrap().replace(from, to);
+            std::fs::write(&path, bytes).unwrap();
+            std::fs::File::open(&path)
+                .unwrap()
+                .set_modified(prior_time)
+                .unwrap();
+            index.catch_up(dir.path()).unwrap();
+            assert!(index.targets_for_interface(&InterfaceId::new(from)).is_empty());
+            let targets = index.targets_for_interface(&InterfaceId::new(to));
+            assert_eq!(targets.len(), 1);
+            index.catch_up(dir.path()).unwrap();
+            assert!(Arc::ptr_eq(
+                &targets[0].0,
+                &index.targets_for_interface(&InterfaceId::new(to))[0].0,
+            ));
+        }
 
         std::fs::remove_file(dir.path().join("run_a.json")).unwrap();
         index.catch_up(dir.path()).unwrap();

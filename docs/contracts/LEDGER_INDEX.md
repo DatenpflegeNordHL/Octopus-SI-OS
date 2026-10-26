@@ -137,8 +137,9 @@ other, and the same discipline applies: the arrival path answers from an
 in-memory projection refreshed only where a file changed.
 
 **The run-records index.** A reverse projection from interface folder to the
-active checkpoints, in any run, that pin it. Before each resolution it stats
-each run file and re-parses only those whose size or modification time changed.
+active checkpoints, in any run, that pin it. Before each resolution it reads
+each run file and compares its bytes with the retained observation. Only changed
+records are re-parsed; unchanged records keep their parsed objects and routes.
 A malformed run record becomes its own inert slot and contributes no target;
 one broken run never fails another interface's arrival. This index only
 accelerates discovery - the actual admission still reloads the target run
@@ -150,8 +151,8 @@ catches up while the runtime stays up, with no resend, no poller, and no
 delivery queue.
 
 **The registry snapshot guard.** The in-memory registry is reloaded only when
-the descriptor tree actually changed: a metadata-only walk folds a fingerprint
-over the descriptor kinds, and the heavy parse and validation run only when it
+the descriptor tree actually changed: a walk folds the current bytes, paths and
+metadata into a fingerprint, and the heavy parse and validation run only when it
 moves. Before/after observations must agree. Unreadable or stably malformed
 descriptors fail closed; concurrent writes return `RegistryUnstable`. Retained
 delivery preserves that typed refusal even before its fan-out scope exists.
@@ -159,7 +160,10 @@ The sender waits within its declared timeout and cancellation boundary, keeping
 the same artifact and delivery identity. It does not repeat the producing effect
 or replace a retained scope. Policy refusals remain terminal.
 
-Both are caches that rebuild from the log.
+File size and timestamps do not establish content identity: a same-size rewrite
+can preserve them. Context-artifact materialization also checks the current
+bytes before reusing a cached blob. These caches rebuild from the files they
+project, not from the movement log.
 
 ## Restart
 

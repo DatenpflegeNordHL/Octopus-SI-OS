@@ -862,6 +862,14 @@ pub fn resolve_spawn_life_config(
     registry_root: &Path,
     interface: &InterfaceId,
 ) -> Result<Option<ResolvedSpawnLifeConfig>, String> {
+    resolve_spawn_life_config_in_snapshot(registry_root, interface, &mut LifeFileSnapshot::default())
+}
+
+pub(crate) fn resolve_spawn_life_config_in_snapshot(
+    registry_root: &Path,
+    interface: &InterfaceId,
+    snapshot: &mut LifeFileSnapshot,
+) -> Result<Option<ResolvedSpawnLifeConfig>, String> {
     let Some(loaded) = load_spawn_life_config(registry_root, interface)? else {
         return Ok(None);
     };
@@ -876,20 +884,20 @@ pub fn resolve_spawn_life_config(
         registry_root,
         interface,
         &loaded.config,
+        snapshot,
     )?;
     append_owner_life_dependencies(
         &mut fingerprint_material,
         registry_root,
         interface,
         &loaded.config,
-        true,
+        snapshot,
     )?;
     append_imported_life_dependency_fingerprints(
         &mut fingerprint_material,
         registry_root,
         &loaded.config,
-        ImportedDependencyFingerprint::Content,
-        None,
+        snapshot,
     )?;
     Ok(Some(ResolvedSpawnLifeConfig {
         config: loaded.config,
@@ -979,49 +987,6 @@ pub fn resolve_spawn_life_executable(
     })
 }
 
-pub(crate) fn resolved_spawn_life_source_fingerprint(
-    registry_root: &Path,
-    interface: &InterfaceId,
-    resolved: &ResolvedSpawnLifeConfig,
-    verification: &mut ImportedExecutableVerification,
-) -> Result<ContentHash, String> {
-    let mut material = Vec::new();
-    append_json_metadata_fingerprint(
-        &mut material,
-        &registry_root.join("interface").join(interface.as_str()),
-        None,
-    )?;
-    let repository_root = registry_root.parent().ok_or_else(|| {
-        format!(
-            "registry root '{}' has no repository parent",
-            registry_root.display()
-        )
-    })?;
-    for declared in life_repository_files(&resolved.config) {
-        let path = resolve_life_file(&declared, registry_root, interface, repository_root)?;
-        append_path_metadata_fingerprint(
-            &mut material,
-            &format!("repository-file/{declared}"),
-            &path,
-        )?;
-    }
-    append_imported_life_dependency_fingerprints(
-        &mut material,
-        registry_root,
-        &resolved.config,
-        ImportedDependencyFingerprint::Source,
-        Some(verification),
-    )?;
-    append_owner_life_dependencies(
-        &mut material,
-        registry_root,
-        interface,
-        &resolved.config,
-        false,
-    )?;
-    Ok(ContentHash::of_bytes(&material))
-}
-
 pub(crate) fn interface_private_environment_source_fingerprint(
     var_dir: &Path,
 ) -> Result<ContentHash, String> {
@@ -1064,50 +1029,6 @@ pub(crate) fn interface_private_environment_source_fingerprint(
     Ok(ContentHash::of_bytes(&material))
 }
 
-fn append_json_metadata_fingerprint(
-    material: &mut Vec<u8>,
-    dir: &Path,
-    selected: Option<&[&str]>,
-) -> Result<(), String> {
-    let entries = std::fs::read_dir(dir).map_err(|error| {
-        format!(
-            "interface directory '{}' cannot be read for freshness: {error}",
-            dir.display()
-        )
-    })?;
-    let selected = selected.map(|names| names.iter().copied().collect::<BTreeSet<_>>());
-    let mut paths = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|error| {
-            format!(
-                "interface directory '{}' contains an unreadable entry during freshness: {error}",
-                dir.display()
-            )
-        })?;
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if path.extension().and_then(|extension| extension.to_str()) != Some("json")
-            || selected
-                .as_ref()
-                .is_some_and(|selected| !selected.contains(name))
-        {
-            continue;
-        }
-        paths.push(path);
-    }
-    paths.sort();
-    for path in paths {
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| format!("interface JSON '{}' has a non-UTF-8 name", path.display()))?;
-        append_path_metadata_fingerprint(material, name, &path)?;
-    }
-    Ok(())
-}
-
 fn append_path_metadata_fingerprint(
     material: &mut Vec<u8>,
     name: &str,
@@ -1146,6 +1067,7 @@ fn append_life_repository_file_fingerprints(
     registry_root: &Path,
     interface: &InterfaceId,
     config: &SpawnLifeConfig,
+    snapshot: &mut LifeFileSnapshot,
 ) -> Result<(), String> {
     let repository_root = registry_root.parent().ok_or_else(|| {
         format!(
@@ -1156,7 +1078,7 @@ fn append_life_repository_file_fingerprints(
     for declared in life_repository_files(config) {
         let path = resolve_life_file(&declared, registry_root, interface, repository_root)?;
         let metadata = std::fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
-        let digest = ImportedExecutableVerification::default().digest(&path, &metadata)?;
+        let digest = snapshot.digest(&path, &metadata)?;
         append_fingerprint_part(
             material,
             &format!("repository-file/{declared}"),
@@ -1215,7 +1137,7 @@ fn append_owner_life_dependencies(
     registry_root: &Path,
     interface: &InterfaceId,
     config: &SpawnLifeConfig,
-    content: bool,
+    snapshot: &mut LifeFileSnapshot,
 ) -> Result<(), String> {
     let root = registry_root
         .parent()
@@ -1234,11 +1156,9 @@ fn append_owner_life_dependencies(
             None,
         )?;
         append_path_metadata_fingerprint(material, &declared, &file)?;
-        if content {
-            let metadata = std::fs::symlink_metadata(&file).map_err(|error| error.to_string())?;
-            let digest = ImportedExecutableVerification::default().digest(&file, &metadata)?;
-            append_fingerprint_part(material, declared, digest.sha256.as_bytes());
-        }
+        let metadata = std::fs::symlink_metadata(&file).map_err(|error| error.to_string())?;
+        let digest = snapshot.digest(&file, &metadata)?;
+        append_fingerprint_part(material, declared, digest.sha256.as_bytes());
     }
     Ok(())
 }
@@ -1250,7 +1170,7 @@ struct ResolvedImportedExecutableDependency {
     executable_relative: PathBuf,
     executable_path: PathBuf,
     build_receipt_bytes: Option<Vec<u8>>,
-    receipt_verified_executable_bytes: Option<Vec<u8>>,
+    executable_digest: ExecutableDigest,
 }
 
 #[derive(serde::Deserialize)]
@@ -1261,12 +1181,7 @@ struct ImportedExecutableBuildReceipt {
     executable_bytes: u64,
 }
 
-#[derive(Clone, Copy)]
-enum ImportedDependencyFingerprint {
-    Content,
-    Source,
-}
-
+#[cfg(test)]
 fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", <Sha256 as sha2::Digest>::digest(bytes))
 }
@@ -1285,7 +1200,7 @@ struct ExecutableDigest {
 }
 
 #[derive(Default)]
-pub(crate) struct ImportedExecutableVerification {
+pub(crate) struct LifeFileSnapshot {
     #[cfg(unix)]
     digests: BTreeMap<PathBuf, CachedExecutableDigest>,
 }
@@ -1294,7 +1209,6 @@ pub(crate) struct ImportedExecutableVerification {
 struct CachedExecutableDigest {
     stamp: [u64; 10],
     digest: ExecutableDigest,
-    observed: bool,
 }
 
 #[cfg(unix)]
@@ -1314,13 +1228,7 @@ fn executable_file_stamp(metadata: &std::fs::Metadata) -> [u64; 10] {
     ]
 }
 
-impl ImportedExecutableVerification {
-    pub(crate) fn finish_pass(&mut self) {
-        #[cfg(unix)]
-        self.digests
-            .retain(|_, cached| std::mem::take(&mut cached.observed));
-    }
-
+impl LifeFileSnapshot {
     fn digest(
         &mut self,
         path: &Path,
@@ -1328,13 +1236,13 @@ impl ImportedExecutableVerification {
     ) -> Result<ExecutableDigest, String> {
         let inspect = |error| {
             format!(
-                "imported interface executable '{}' cannot be read for receipt verification: {error}",
+                "interface life file '{}' cannot be read for fingerprinting: {error}",
                 path.display()
             )
         };
         let changed = || {
             format!(
-                "imported interface executable '{}' changed during receipt verification",
+                "interface life file '{}' changed during fingerprinting",
                 path.display()
             )
         };
@@ -1357,10 +1265,9 @@ impl ImportedExecutableVerification {
                 self.digests.remove(path);
                 return Err(changed());
             }
-            if let Some(cached) = self.digests.get_mut(path)
+            if let Some(cached) = self.digests.get(path)
                 && cached.stamp == stamp
             {
-                cached.observed = true;
                 return Ok(cached.digest.clone());
             }
             self.digests.remove(path);
@@ -1400,7 +1307,6 @@ impl ImportedExecutableVerification {
             CachedExecutableDigest {
                 stamp: executable_file_stamp(&before),
                 digest: digest.clone(),
-                observed: true,
             },
         );
         Ok(digest)
@@ -1444,7 +1350,7 @@ fn parse_imported_executable_reference(
 fn resolve_imported_executable_dependency(
     registry_root: &Path,
     declared_program: &str,
-    verification: Option<&mut ImportedExecutableVerification>,
+    snapshot: &mut LifeFileSnapshot,
 ) -> Result<Option<ResolvedImportedExecutableDependency>, String> {
     let Some((source_interface, executable_relative)) =
         parse_imported_executable_reference(declared_program)?
@@ -1537,7 +1443,8 @@ fn resolve_imported_executable_dependency(
         ));
     }
     let build_receipt_path = build_receipt_root.join(IMPORTED_EXECUTABLE_BUILD_RECEIPT_FILE);
-    let (build_receipt_bytes, receipt_verified_executable_bytes) = match std::fs::symlink_metadata(
+    let executable_digest = snapshot.digest(&canonical_executable, &executable_metadata)?;
+    let build_receipt_bytes = match std::fs::symlink_metadata(
         &build_receipt_path,
     ) {
         Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
@@ -1574,32 +1481,8 @@ fn resolve_imported_executable_dependency(
                     build_receipt_path.display()
                 ));
             }
-            let (actual_bytes, actual_sha256, executable_bytes) = if let Some(verification) =
-                verification
-            {
-                let digest = verification.digest(&canonical_executable, &executable_metadata)?;
-                (digest.bytes, digest.sha256, None)
-            } else {
-                let executable_bytes = std::fs::read(&canonical_executable).map_err(|error| {
-                    format!(
-                        "imported interface executable '{}' cannot be read for receipt verification: {error}",
-                        canonical_executable.display()
-                    )
-                })?;
-                let actual_bytes = u64::try_from(executable_bytes.len()).map_err(|_| {
-                    format!(
-                        "imported interface executable '{}' exceeds the receipt size domain",
-                        canonical_executable.display()
-                    )
-                })?;
-                (
-                    actual_bytes,
-                    sha256_hex(&executable_bytes),
-                    Some(executable_bytes),
-                )
-            };
             if receipt.executable_bytes != executable_metadata.len()
-                || receipt.executable_bytes != actual_bytes
+                || receipt.executable_bytes != executable_digest.bytes
             {
                 return Err(format!(
                     "imported executable build receipt '{}' does not match executable '{}'",
@@ -1607,14 +1490,14 @@ fn resolve_imported_executable_dependency(
                     canonical_executable.display()
                 ));
             }
-            if receipt.executable_sha256 != actual_sha256 {
+            if receipt.executable_sha256 != executable_digest.sha256 {
                 return Err(format!(
                     "imported executable build receipt '{}' SHA-256 does not match executable '{}'",
                     build_receipt_path.display(),
                     canonical_executable.display()
                 ));
             }
-            (Some(bytes), executable_bytes)
+            Some(bytes)
         }
         Ok(_) => {
             return Err(format!(
@@ -1622,7 +1505,7 @@ fn resolve_imported_executable_dependency(
                 build_receipt_path.display()
             ));
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (None, None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => {
             return Err(format!(
                 "imported executable build receipt '{}' cannot be inspected: {error}",
@@ -1637,7 +1520,7 @@ fn resolve_imported_executable_dependency(
         executable_relative,
         executable_path: canonical_executable,
         build_receipt_bytes,
-        receipt_verified_executable_bytes,
+        executable_digest,
     }))
 }
 
@@ -1654,16 +1537,11 @@ fn append_imported_life_dependency_fingerprints(
     material: &mut Vec<u8>,
     registry_root: &Path,
     config: &SpawnLifeConfig,
-    fingerprint: ImportedDependencyFingerprint,
-    mut verification: Option<&mut ImportedExecutableVerification>,
+    snapshot: &mut LifeFileSnapshot,
 ) -> Result<(), String> {
     for declared in imported_executable_declarations(config) {
-        let dependency = resolve_imported_executable_dependency(
-            registry_root,
-            &declared,
-            verification.as_deref_mut(),
-        )?
-        .ok_or_else(|| format!("imported executable declaration '{declared}' is invalid"))?;
+        let dependency = resolve_imported_executable_dependency(registry_root, &declared, snapshot)?
+            .ok_or_else(|| format!("imported executable declaration '{declared}' is invalid"))?;
         let prefix = format!("interface-import/{}", dependency.source_interface);
         append_fingerprint_part(
             material,
@@ -1674,30 +1552,12 @@ fn append_imported_life_dependency_fingerprints(
             "{prefix}/{}",
             dependency.executable_relative.to_string_lossy()
         );
-        match fingerprint {
-            ImportedDependencyFingerprint::Content => {
-                if let Some(executable_bytes) =
-                    dependency.receipt_verified_executable_bytes.as_deref()
-                {
-                    append_fingerprint_part(material, &executable_name, executable_bytes);
-                } else {
-                    let executable_bytes = std::fs::read(&dependency.executable_path).map_err(
-                        |error| {
-                        format!(
-                            "imported interface executable '{}' cannot be read for fingerprinting: {error}",
-                            dependency.executable_path.display()
-                        )
-                    },
-                    )?;
-                    append_fingerprint_part(material, &executable_name, &executable_bytes);
-                }
-            }
-            ImportedDependencyFingerprint::Source => append_path_metadata_fingerprint(
-                material,
-                &executable_name,
-                &dependency.executable_path,
-            )?,
-        }
+        append_path_metadata_fingerprint(material, &executable_name, &dependency.executable_path)?;
+        append_fingerprint_part(
+            material,
+            &executable_name,
+            dependency.executable_digest.sha256.as_bytes(),
+        );
         append_fingerprint_part(
             material,
             &format!("{prefix}/build-receipt-state"),
@@ -3027,8 +2887,12 @@ fn resolve_executable_base(
                 interface_root.display()
             )
         })?;
-        let dependency = resolve_imported_executable_dependency(registry_root, declared_program, None)?
-            .ok_or_else(|| {
+        let dependency = resolve_imported_executable_dependency(
+            registry_root,
+            declared_program,
+            &mut LifeFileSnapshot::default(),
+        )?
+        .ok_or_else(|| {
             format!("imported executable declaration '{declared_program}' is invalid")
         })?;
         return Ok((
@@ -3984,14 +3848,7 @@ mod tests {
                 resolve_spawn_life_config(&registry, &InterfaceId::new("world_importer"))
                     .unwrap()
                     .unwrap();
-            let source = resolved_spawn_life_source_fingerprint(
-                &registry,
-                &InterfaceId::new("world_importer"),
-                &resolved,
-                &mut ImportedExecutableVerification::default(),
-            )
-            .unwrap();
-            (resolved.fingerprint, source)
+            resolved.fingerprint
         };
         let first = snapshot();
 
@@ -4011,31 +3868,8 @@ mod tests {
         let receipt_changed = snapshot();
         assert_ne!(receipt_added, receipt_changed);
 
-        let (arrivals, _) = tokio::sync::mpsc::channel(1);
-        let (emissions, _) = tokio::sync::mpsc::channel(1);
-        let mut reconciler = crate::InterfaceActivationReconciler::new(
-            registry.clone(),
-            dir.path().into(),
-            arrivals,
-            emissions,
-            CancellationToken::new(),
-            dir.path().into(),
-            None,
-        );
-        let mut verification = ImportedExecutableVerification::default();
         let id = InterfaceId::new("world_importer");
-        assert!(
-            reconciler
-                .resolve_interface_life(&id, &mut verification)
-                .unwrap()
-                .is_some()
-        );
-        verification.finish_pass();
-        #[cfg(unix)]
-        assert_eq!(verification.digests.len(), 1);
-        verification.finish_pass();
-        #[cfg(unix)]
-        assert!(verification.digests.is_empty());
+        assert!(resolve_spawn_life_config(&registry, &id).unwrap().is_some());
         std::fs::write(&receipt, b"[]").unwrap();
         let error =
             resolve_spawn_life_config(&registry, &InterfaceId::new("world_importer")).unwrap_err();
@@ -4049,8 +3883,7 @@ mod tests {
         replacement["processes"][0]["bin"] =
             serde_json::json!("interface://world_source/packages/other/bin/life");
         std::fs::write(&life, serde_json::to_vec(&replacement).unwrap()).unwrap();
-        let repaired = reconciler
-            .resolve_interface_life(&id, &mut verification)
+        let repaired = resolve_spawn_life_config(&registry, &id)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -4058,12 +3891,7 @@ mod tests {
             "interface://world_source/packages/other/bin/life"
         );
         std::fs::write(&life, b"[]").unwrap();
-        assert!(
-            reconciler
-                .resolve_interface_life(&id, &mut verification)
-                .is_err()
-        );
-        assert!(!reconciler.resolved_lives.contains_key(&id));
+        assert!(resolve_spawn_life_config(&registry, &id).is_err());
     }
 
     #[test]
@@ -4106,15 +3934,12 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        let mut verification = ImportedExecutableVerification::default();
-        let mut resolve = || {
-            let result = resolve_imported_executable_dependency(
+        let resolve = || {
+            resolve_imported_executable_dependency(
                 &registry,
                 "interface://world_source/packages/imported-life/bin/life",
-                Some(&mut verification),
-            );
-            verification.finish_pass();
-            result
+                &mut LifeFileSnapshot::default(),
+            )
         };
         for _ in 0..2 {
             assert!(matches!(resolve(), Ok(Some(_))));
@@ -4795,18 +4620,18 @@ mod tests {
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o644)).unwrap();
         let interface = InterfaceId::new("world_authored");
         let first = resolve_spawn_life_config(&registry, &interface).unwrap().unwrap();
-        let source = |resolved: &ResolvedSpawnLifeConfig| resolved_spawn_life_source_fingerprint(&registry, &interface, resolved,
-            &mut ImportedExecutableVerification::default()).unwrap();
-        let first_source = source(&first);
+        let executable_modified = std::fs::metadata(&executable).unwrap().modified().unwrap();
+        let script_modified = std::fs::metadata(&script).unwrap().modified().unwrap();
         std::fs::write(&executable, "#!/bin/sh\nexit 1\n").unwrap();
+        std::fs::File::open(&executable).unwrap().set_modified(executable_modified).unwrap();
         let second = resolve_spawn_life_config(&registry, &interface).unwrap().unwrap();
         assert_ne!(first.fingerprint, second.fingerprint);
-        assert_ne!(first_source, source(&second));
         std::fs::write(&script, "print('omega')").unwrap();
+        std::fs::File::open(&script).unwrap().set_modified(script_modified).unwrap();
         let third = resolve_spawn_life_config(&registry, &interface).unwrap().unwrap();
         assert_ne!(second.fingerprint, third.fingerprint);
         std::fs::remove_file(&executable).unwrap();
-        assert!(resolved_spawn_life_source_fingerprint(&registry, &interface, &third, &mut ImportedExecutableVerification::default()).is_err());
+        assert!(resolve_spawn_life_config(&registry, &interface).is_err());
         symlink("/bin/true", &executable).unwrap();
         assert!(resolve_spawn_life_executable(&registry, &interface, root.path(), &third.config.processes[0]).is_err());
         std::fs::remove_file(&executable).unwrap();
@@ -4887,13 +4712,6 @@ mod tests {
         let first = resolve_spawn_life_config(&registry, &InterfaceId::new("world_instance"))
             .unwrap()
             .unwrap();
-        let first_source = resolved_spawn_life_source_fingerprint(
-            &registry,
-            &InterfaceId::new("world_instance"),
-            &first,
-            &mut ImportedExecutableVerification::default(),
-        )
-        .unwrap();
         assert!(!first.config.processes[0].authority.allow_network);
 
         std::fs::write(
@@ -4913,15 +4731,7 @@ mod tests {
         let second = resolve_spawn_life_config(&registry, &InterfaceId::new("world_instance"))
             .unwrap()
             .unwrap();
-        let second_source = resolved_spawn_life_source_fingerprint(
-            &registry,
-            &InterfaceId::new("world_instance"),
-            &second,
-            &mut ImportedExecutableVerification::default(),
-        )
-        .unwrap();
         assert_eq!(first.fingerprint, second.fingerprint);
-        assert_eq!(first_source, second_source);
     }
 
     #[test]

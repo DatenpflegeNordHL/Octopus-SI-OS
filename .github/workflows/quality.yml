@@ -194,8 +194,14 @@ jobs:
         run: |
           cargo nextest run --locked -p octopus-policy -p octopus-ledger-index -p octopus-runtime -p octopus-operator-chat-client -p octopus-model-context-render -p octopus-file-storage --lib --test instructions -E 'package(octopus-policy) | package(octopus-ledger-index) | package(octopus-runtime) | binary(instructions) | (package(octopus-operator-chat-client) & test(real_registry_home_plan_exports_authoring_and_exact_policy_requirements)) | (package(octopus-file-storage) & test(/^publication::tests::/))'
 
+      - name: Interface executable freshness and receipt checks
+        run: cargo nextest run --locked -p octopus-interface-transport --lib -E 'test(imported_executable_receipt_) | test(life_fingerprint_) | test(reconciliation_reads_)'
+
       - name: Runtime and product dependency boundaries
         run: cargo test --locked -p octopus-app --test architecture_dependency_guard production_roots_keep_registry_implementation_boundaries -- --exact
+
+      - name: Registry and context artifact freshness
+        run: cargo nextest run --locked -p octopus-app-server --lib -E 'test(context_artifact_cache::) | test(registry_fingerprint_tracks_same_size_) | test(registry_observation_)'
 
       - name: MCP operations and optional reasoning model catalogues
         run: |
@@ -314,6 +320,9 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install tesseract
+
+      - name: Interface executable freshness and receipt checks
+        run: cargo nextest run --locked -p octopus-interface-transport --lib -E 'test(imported_executable_receipt_) | test(life_fingerprint_) | test(reconciliation_reads_)'
 
       - name: Package verifier, Home admission, provider recovery and voice contracts
         run: |

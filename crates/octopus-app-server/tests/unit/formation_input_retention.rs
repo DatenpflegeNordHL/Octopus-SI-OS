@@ -151,6 +151,24 @@ fn normalized_formation_inputs_rebuild_the_historical_grant_after_source_changes
 }
 
 #[test]
+fn registry_fingerprint_tracks_same_size_rewrites_with_preserved_mtime() {
+    let root = tempfile::tempdir().unwrap();
+    let registry = root.path().join("registry");
+    let instances = root.path().join("instances");
+    let descriptor = registry.join("interface/world_probe/interface.json");
+    write(&descriptor, json!({"id":"world_probe", "source_names":["alpha"]}));
+    let modified = std::fs::metadata(&descriptor).unwrap().modified().unwrap();
+    let mut previous = registry_descriptor_fingerprint(&registry, &instances).unwrap();
+    for text in ["omega", "alpha"].into_iter().cycle().take(32) {
+        write(&descriptor, json!({"id":"world_probe", "source_names":[text]}));
+        std::fs::File::open(&descriptor).unwrap().set_modified(modified).unwrap();
+        let next = registry_descriptor_fingerprint(&registry, &instances).unwrap();
+        assert_ne!(previous, next);
+        previous = next;
+    }
+}
+
+#[test]
 fn registry_observation_requires_stability_and_propagates_read_failures() {
     for (reads, expected, loads) in [
         (vec![1, 2, 2, 2], "ok", 2),

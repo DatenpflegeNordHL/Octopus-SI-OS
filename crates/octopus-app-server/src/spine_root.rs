@@ -168,6 +168,7 @@ fn registry_descriptor_fingerprint(
         }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         path.hash(&mut hasher);
+        std::fs::read(&path)?.hash(&mut hasher);
         metadata.len().hash(&mut hasher);
         metadata.modified()?.hash(&mut hasher);
         #[cfg(unix)]

@@ -15,7 +15,7 @@ struct FileFingerprint {
 
 #[derive(Clone, Debug)]
 struct CachedArtifact {
-    fingerprint: FileFingerprint,
+    fingerprint: ContentHash,
     content: ContentHash,
 }
 
@@ -79,12 +79,27 @@ impl RegistryContextArtifactCache {
         }
         let path = artifact_path(&self.artifact_root, id)?;
         let before = file_fingerprint(&path)?;
+        let bytes = std::fs::read(&path).map_err(|error| {
+            format!(
+                "context artifact '{}' at '{}' cannot be read: {error}",
+                id.as_str(),
+                path.display()
+            )
+        })?;
+        let after = file_fingerprint(&path)?;
+        if before != after {
+            return Err(format!(
+                "context artifact '{}' changed while '{}' was being materialized",
+                id.as_str(), path.display()
+            ));
+        }
+        let fingerprint = ContentHash::of_bytes(&bytes);
         let cached = self
             .entries
             .lock()
             .map_err(|_| "context artifact cache lock is poisoned".to_string())?
             .get(id)
-            .filter(|entry| entry.fingerprint == before)
+            .filter(|entry| entry.fingerprint == fingerprint)
             .cloned();
         if let Some(cached) = cached {
             let present = self
@@ -99,13 +114,6 @@ impl RegistryContextArtifactCache {
             }
         }
 
-        let bytes = std::fs::read(&path).map_err(|error| {
-            format!(
-                "context artifact '{}' at '{}' cannot be read: {error}",
-                id.as_str(),
-                path.display()
-            )
-        })?;
         let artifact_json: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
             format!(
                 "context artifact '{}' at '{}' is not valid JSON: {error}",
@@ -113,14 +121,6 @@ impl RegistryContextArtifactCache {
                 path.display()
             )
         })?;
-        let after = file_fingerprint(&path)?;
-        if before != after {
-            return Err(format!(
-                "context artifact '{}' changed while '{}' was being materialized",
-                id.as_str(),
-                path.display()
-            ));
-        }
         let canonical = octopus_descriptors::canonical_bytes(&artifact_json);
         let expected = ContentHash::of_bytes(&canonical);
         let stored = self
@@ -144,7 +144,7 @@ impl RegistryContextArtifactCache {
             .insert(
                 id.clone(),
                 CachedArtifact {
-                    fingerprint: after,
+                    fingerprint,
                     content: stored.clone(),
                 },
             );
@@ -265,8 +265,10 @@ mod tests {
         let repeated = cache.resolve(&id).expect("cached artifact resolves");
         assert_eq!(first, repeated);
 
-        std::fs::write(&path, br#"{"id":"artifact-probe","text":"replacement"}"#)
-            .expect("replacement artifact writes");
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        std::fs::write(&path, br#"{"id":"artifact-probe","text":"two"}"#)
+            .expect("same-size replacement artifact writes");
+        std::fs::File::open(&path).unwrap().set_modified(modified).unwrap();
         let replacement = cache.resolve(&id).expect("replacement artifact resolves");
         assert_ne!(first, replacement);
 

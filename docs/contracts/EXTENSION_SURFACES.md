@@ -36,6 +36,14 @@ resetting a disposable Home; do not transplant old runs, checkpoints or ledgers.
 
 ## Interface process lifecycle
 
+Each life reconciliation observes the current descriptor, executable and declared
+file contents. Shared executable digests belong only to that reconciliation;
+they are discarded before the next one. Matching file metadata never justifies
+reusing a digest across observations. Build receipts are checked against those
+observed bytes, and content changes participate in the life restart fingerprint.
+This is freshness and receipt consistency, not a security boundary against an
+actor allowed to change both the executable and its receipt.
+
 The generic Rust life bridge acknowledges readiness publication. Awaiting its
 ready signal succeeds only after the bounded Ready frame has been written and
 flushed; synchronous recovery work after that boundary cannot postpone the
