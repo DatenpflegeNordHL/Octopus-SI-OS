@@ -6150,6 +6150,7 @@ mod tests {
         assert!(remote_exec.sidecars.contains_key("remote_exec.json"));
 
         for interface in [
+            "world_mcp_firecrawl",
             "world_mcp_github",
             "world_mcp_unity",
         ] {
