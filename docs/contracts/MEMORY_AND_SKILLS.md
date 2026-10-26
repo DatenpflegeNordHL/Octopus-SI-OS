@@ -137,6 +137,12 @@ consumers and related state, adapting its investigation and verification to the
 task. Schemas and detailed operation examples remain available on demand;
 general instructions do not repeat them or prescribe a universal checklist.
 
+The system library's `framework-authoring` entry carries portable Octopus
+development guidance: architecture principles, the four development axes and
+engineering discipline. The system-review trigger binds that library, and its
+role directs the run to read the entry before changing Octopus. The guide does
+not depend on a maintainer's private skill files or grant additional authority.
+
 The registry ships `skill.capture`, `skill.upsert`, `skill.search`,
 `skill.list`, and `skill.get` as **ordinary tools** behind the system room's
 door. A concept-named tool is fine. A concept-named runtime primitive is not.
