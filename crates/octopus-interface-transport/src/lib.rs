@@ -154,12 +154,19 @@ pub struct InterfaceActivationReconciler {
     octopus_home: PathBuf,
     durable_root: Option<PathBuf>,
     run_index: octopus_runtime::run_index::RunRecordsIndex,
+    resolved_lives: BTreeMap<InterfaceId, CachedResolvedInterfaceLife>,
+    imported_executables: interface_life::ImportedExecutableVerification,
     lifted: BTreeMap<InterfaceId, LiftedInterfaceLife>,
     life_exit_tx: tokio::sync::mpsc::UnboundedSender<InterfaceLifeEvent>,
     life_exit_rx: tokio::sync::mpsc::UnboundedReceiver<InterfaceLifeEvent>,
     next_lift_id: u64,
     failures: BTreeMap<InterfaceId, String>,
     live: bool,
+}
+
+struct CachedResolvedInterfaceLife {
+    source_fingerprint: ContentHash,
+    resolved: ResolvedSpawnLifeConfig,
 }
 
 struct LiftedInterfaceLife {
@@ -258,6 +265,8 @@ impl InterfaceActivationReconciler {
             octopus_home,
             durable_root,
             run_index: octopus_runtime::run_index::RunRecordsIndex::new(),
+            resolved_lives: BTreeMap::new(),
+            imported_executables: interface_life::ImportedExecutableVerification::default(),
             lifted: BTreeMap::new(),
             life_exit_tx,
             life_exit_rx,
@@ -272,6 +281,43 @@ impl InterfaceActivationReconciler {
             eprintln!("interface '{}' is in coma: {failure}", interface.as_str());
         }
         self.failures.insert(interface.clone(), failure.to_string());
+    }
+
+    fn resolve_interface_life(
+        &mut self,
+        interface: &InterfaceId,
+        verification: &mut interface_life::ImportedExecutableVerification,
+    ) -> Result<Option<ResolvedSpawnLifeConfig>, String> {
+        if let Some(cached) = self.resolved_lives.get(interface) {
+            let fingerprint = interface_life::resolved_spawn_life_source_fingerprint(
+                &self.registry_root,
+                interface,
+                &cached.resolved,
+                verification,
+            );
+            if fingerprint.is_ok_and(|fingerprint| fingerprint == cached.source_fingerprint) {
+                return Ok(Some(cached.resolved.clone()));
+            }
+        }
+        self.resolved_lives.remove(interface);
+        let resolved = interface_life::resolve_spawn_life_config(&self.registry_root, interface)?;
+        let Some(resolved) = resolved else {
+            return Ok(None);
+        };
+        let source_fingerprint = interface_life::resolved_spawn_life_source_fingerprint(
+            &self.registry_root,
+            interface,
+            &resolved,
+            verification,
+        )?;
+        self.resolved_lives.insert(
+            interface.clone(),
+            CachedResolvedInterfaceLife {
+                source_fingerprint,
+                resolved: resolved.clone(),
+            },
+        );
+        Ok(Some(resolved))
     }
 
     async fn reconcile_interface_lives(&mut self) -> Result<(), String> {
@@ -317,9 +363,10 @@ impl InterfaceActivationReconciler {
             .collect::<Vec<_>>();
         for interface in stale {
             self.stop_life(&interface).await;
+            self.resolved_lives.remove(&interface);
             self.failures.remove(&interface);
         }
-        let mut snapshot = interface_life::LifeFileSnapshot::default();
+        let mut verification = std::mem::take(&mut self.imported_executables);
         for interface in mentioned {
             if let Some(error) = activation_scan.errors.get(&interface) {
                 self.stop_life(&interface).await;
@@ -333,11 +380,7 @@ impl InterfaceActivationReconciler {
                 failures.push(format!("interface '{}': {failure}", interface.as_str()));
                 continue;
             }
-            let resolved = match interface_life::resolve_spawn_life_config_in_snapshot(
-                &self.registry_root,
-                &interface,
-                &mut snapshot,
-            ) {
+            let resolved = match self.resolve_interface_life(&interface, &mut verification) {
                 Ok(Some(resolved)) => resolved,
                 Ok(None) => {
                     self.stop_life(&interface).await;
@@ -528,6 +571,8 @@ impl InterfaceActivationReconciler {
                 },
             );
         }
+        verification.finish_pass();
+        self.imported_executables = verification;
         if !failures.is_empty() {
             tracing::warn!(
                 failures = failures.len(),
@@ -576,6 +621,7 @@ impl InterfaceActivationReconciler {
     }
 
     async fn stop_all_lives(&mut self) {
+        self.imported_executables = interface_life::ImportedExecutableVerification::default();
         let lifted = std::mem::take(&mut self.lifted);
         for life in lifted.values() {
             life.cancel.cancel();

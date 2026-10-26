@@ -5,7 +5,12 @@ use std::sync::Arc;
 use crate::run_record::RunRecord;
 use crate::{CheckpointId, ContentHash, InterfaceId, RunId, RunRecordSnapshot};
 
+use octopus_file_storage::metadata::FileStamp;
+use std::time::SystemTime;
+
 struct RunSlot {
+    fingerprint: FileStamp,
+    settled: bool,
     record_hash: Option<ContentHash>,
     record_bytes: Option<Arc<[u8]>>,
     record: Option<Arc<RunRecord>>,
@@ -50,15 +55,34 @@ impl RunRecordsIndex {
                 self.remove(&run);
                 continue;
             }
+            let observed_before_read = SystemTime::now();
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => {
+                    self.remove(&run);
+                    continue;
+                }
+            };
             present.insert(run.clone());
+            let fingerprint = FileStamp::of(&metadata);
+            let settled = fingerprint.is_settled(observed_before_read);
+            if settled
+                && self
+                    .slots
+                    .get(&run)
+                    .is_some_and(|slot| slot.settled && slot.fingerprint == fingerprint)
+            {
+                continue;
+            }
             let (record_hash, record_bytes, loaded) = match std::fs::read(entry.path()) {
                 Ok(bytes) => {
-                    if self
+                    if let Some(slot) = self
                         .slots
-                        .get(&run)
-                        .and_then(|slot| slot.record_bytes.as_deref())
-                        == Some(bytes.as_slice())
+                        .get_mut(&run)
+                        .filter(|slot| slot.record_bytes.as_deref() == Some(bytes.as_slice()))
                     {
+                        slot.fingerprint = fingerprint;
+                        slot.settled = settled;
                         continue;
                     }
                     (
@@ -69,7 +93,7 @@ impl RunRecordsIndex {
                 }
                 Err(error) => (None, None, Err(error)),
             };
-            self.install(run, record_hash, record_bytes, loaded);
+            self.install(run, fingerprint, settled, record_hash, record_bytes, loaded);
         }
         let vanished: Vec<RunId> = self
             .slots
@@ -114,6 +138,8 @@ impl RunRecordsIndex {
     fn install(
         &mut self,
         run: RunId,
+        fingerprint: FileStamp,
+        settled: bool,
         record_hash: Option<ContentHash>,
         record_bytes: Option<Arc<[u8]>>,
         loaded: std::io::Result<Option<RunRecord>>,
@@ -146,6 +172,8 @@ impl RunRecordsIndex {
         self.slots.insert(
             run,
             RunSlot {
+                fingerprint,
+                settled,
                 record_hash,
                 record_bytes,
                 record,
@@ -479,7 +507,9 @@ mod tests {
                 .set_modified(prior_time)
                 .unwrap();
             index.catch_up(dir.path()).unwrap();
-            assert!(index.targets_for_interface(&InterfaceId::new(from)).is_empty());
+            assert!(index
+                .targets_for_interface(&InterfaceId::new(from))
+                .is_empty());
             let targets = index.targets_for_interface(&InterfaceId::new(to));
             assert_eq!(targets.len(), 1);
             index.catch_up(dir.path()).unwrap();
@@ -491,10 +521,8 @@ mod tests {
 
         std::fs::remove_file(dir.path().join("run_a.json")).unwrap();
         index.catch_up(dir.path()).unwrap();
-        assert!(
-            index
-                .targets_for_interface(&InterfaceId::new("world_y"))
-                .is_empty()
-        );
+        assert!(index
+            .targets_for_interface(&InterfaceId::new("world_y"))
+            .is_empty());
     }
 }

@@ -136,34 +136,33 @@ The ledger is one truth surface. The descriptor and run JSON on disk is the
 other, and the same discipline applies: the arrival path answers from an
 in-memory projection refreshed only where a file changed.
 
-**The run-records index.** A reverse projection from interface folder to the
-active checkpoints, in any run, that pin it. Before each resolution it reads
-each run file and compares its bytes with the retained observation. Only changed
-records are re-parsed; unchanged records keep their parsed objects and routes.
-A malformed run record becomes its own inert slot and contributes no target;
-one broken run never fails another interface's arrival. This index only
-accelerates discovery - the actual admission still reloads the target run
-record from disk and re-forms its grant.
+**The run-record index.** A reverse map from interface folder to the active
+checkpoints that pin it. Before resolving targets, the index compares each file's
+identity, size, modification and change times. Settled, unchanged files reuse the
+parsed record and routes. Only changed or recently observed files are reread;
+equal bytes avoid reparsing. Vanished files are dropped. Malformed or unreadable
+records contribute no targets, while healthy siblings continue. Admission still
+reads the chosen run and forms its grant from current data.
 
 When a run file changes, already-admitted outputs for its newly visible
 bindings are replayed through the ordinary per-edge gates. A repaired recipient
 catches up while the runtime stays up, with no resend, no poller, and no
 delivery queue.
 
-**The registry snapshot guard.** The in-memory registry is reloaded only when
-the descriptor tree actually changed: a walk folds the current bytes, paths and
-metadata into a fingerprint, and the heavy parse and validation run only when it
-moves. Before/after observations must agree. Unreadable or stably malformed
-descriptors fail closed; concurrent writes return `RegistryUnstable`. Retained
-delivery preserves that typed refusal even before its fan-out scope exists.
-The sender waits within its declared timeout and cancellation boundary, keeping
-the same artifact and delivery identity. It does not repeat the producing effect
-or replace a retained scope. Policy refusals remain terminal.
+**The registry snapshot guard.** A walk folds paths and metadata into a
+fingerprint. Only files with recent or unusable timestamps additionally contribute
+their bytes. Parsing and validation run when the fingerprint changes. Before/after
+observations must agree. Unreadable or stably malformed descriptors fail closed;
+concurrent writes return `RegistryUnstable`.
+Retained delivery preserves that typed refusal, the artifact and delivery identity.
+It does not repeat the producing effect. Policy refusals remain terminal.
 
-File size and timestamps do not establish content identity: a same-size rewrite
-can preserve them. Context-artifact materialization also checks the current
-bytes before reusing a cached blob. These caches rebuild from the files they
-project, not from the movement log.
+The one-second freshness window covers equal-size writes within a coarse
+filesystem clock tick. An observation must already be settled before reading:
+a cached recent observation cannot become reusable just because time passes.
+Missing or future timestamps cannot establish freshness. Platforms without a
+change timestamp keep the read path. Context-artifact materialization follows
+the same rule before reusing its canonical blob.
 
 ## Restart
 

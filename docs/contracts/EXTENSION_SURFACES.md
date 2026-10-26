@@ -36,13 +36,16 @@ resetting a disposable Home; do not transplant old runs, checkpoints or ledgers.
 
 ## Interface process lifecycle
 
-Each life reconciliation observes the current descriptor, executable and declared
-file contents. Shared executable digests belong only to that reconciliation;
-they are discarded before the next one. Matching file metadata never justifies
-reusing a digest across observations. Build receipts are checked against those
-observed bytes, and content changes participate in the life restart fingerprint.
-This is freshness and receipt consistency, not a security boundary against an
-actor allowed to change both the executable and its receipt.
+Life reconciliation caches resolved configurations and executable digests using
+file identity, size, modification and change times. A metadata observation less
+than one second old is racy: only that file is read again, so equal-size writes
+within a coarse filesystem clock tick cannot reuse stale content. The observation
+must already be settled before the read starts; a cached racy observation never
+becomes reusable merely because time passes. Missing or future timestamps keep
+the read path. Platforms without a change timestamp also keep that path.
+Build receipts still check the executable digest, and changed content participates
+in the life restart fingerprint. This is freshness and receipt consistency, not
+a security boundary against an actor able to replace both executable and receipt.
 
 The generic Rust life bridge acknowledges readiness publication. Awaiting its
 ready signal succeeds only after the bounded Ready frame has been written and
@@ -615,7 +618,9 @@ without client JSON wrappers, extra instructions or synthetic completion message
 Call creation returns its SDP before the control connection is established,
 allowing WebRTC to activate the remote session. The provider joins that exact
 call with bounded activation retries. The microphone remains disabled until
-both WebRTC and an admitted provider-ready event are confirmed.
+both WebRTC and an admitted provider-ready event are confirmed. An authenticated
+sideband join publishes attached state for that exact call; joining an existing
+call does not wait for its earlier session-start event.
 
 ## Media across interfaces
 

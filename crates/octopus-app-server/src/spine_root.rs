@@ -162,13 +162,16 @@ fn registry_descriptor_fingerprint(
         if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
             return Ok(());
         }
+        let observed_before_read = std::time::SystemTime::now();
         let metadata = std::fs::metadata(&path)?;
         if !metadata.is_file() {
             return Ok(());
         }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         path.hash(&mut hasher);
-        std::fs::read(&path)?.hash(&mut hasher);
+        if !octopus_file_storage::metadata::FileStamp::of(&metadata).is_settled(observed_before_read) {
+            std::fs::read(&path)?.hash(&mut hasher);
+        }
         metadata.len().hash(&mut hasher);
         metadata.modified()?.hash(&mut hasher);
         #[cfg(unix)]
