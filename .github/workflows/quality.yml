@@ -194,6 +194,9 @@ jobs:
         run: |
           cargo nextest run --locked -p octopus-policy -p octopus-ledger-index -p octopus-runtime -p octopus-operator-chat-client -p octopus-model-context-render -p octopus-file-storage --lib --test instructions -E 'package(octopus-policy) | package(octopus-ledger-index) | package(octopus-runtime) | binary(instructions) | (package(octopus-operator-chat-client) & test(real_registry_home_plan_exports_authoring_and_exact_policy_requirements)) | (package(octopus-file-storage) & test(/^publication::tests::/))'
 
+      - name: Runtime and product dependency boundaries
+        run: cargo test --locked -p octopus-app --test architecture_dependency_guard production_roots_keep_registry_implementation_boundaries -- --exact
+
       - name: MCP operations and optional reasoning model catalogues
         run: |
           cargo test --locked -p octopus-mcp-client --lib every_remote_mcp_operation_is_interface_local_and_strictly_loadable
