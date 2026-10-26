@@ -352,6 +352,16 @@ fn context_publications_preserve_fanout_evidence_without_repeating_the_output() 
             fixture.rows.push(row);
         }
         fixture.save();
+        let mut full = octopus_ledger_index::ArrivalDedupIndex::new();
+        full.catch_up_movements(fixture.rows.clone()).unwrap();
+        let mut selected = octopus_ledger_index::InterfaceArrivalProjection::new("provider".into());
+        for row in &fixture.rows {
+            if row.from == Endpoint::Interface("provider".into()) { selected.observe(row).unwrap(); }
+        }
+        assert_eq!(selected.retained_arrival_scope("same-output").unwrap(),
+            full.retained_arrival_scope(&"provider".into(), "same-output").unwrap());
+        assert_eq!(format!("{:?}", selected.retained_arrival_edges(scope).unwrap()),
+            format!("{:?}", full.retained_arrival_edges(scope).unwrap()));
         let mut publications=ContextPublications::new();
         for seq in &arrivals { fixture.handoff.record_context_publication(&mut publications,&artifact,*seq).unwrap(); }
         assert_eq!(publications[&artifact_ref_key(&artifact)], arrivals.iter().copied().collect());

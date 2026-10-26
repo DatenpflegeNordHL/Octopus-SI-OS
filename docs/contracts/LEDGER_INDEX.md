@@ -140,9 +140,14 @@ boundary. Complete grants are materialized only for the writer's own call and
 result edges. The provider handoff and its authoring-result consumer share
 one writer-history cache for the same interface and ledger. Result consumption
 validates that identity and checks the appended delta against the retained cursor.
-Retained delivery keeps complete grants for required arrivals, preserving exact contract
-comparisons during replacement. Other rows still validate their referenced grant
-content without copying unused authority into every historical movement.
+Retained delivery uses a read-only projection for its emitting interface. Its reader
+checks every ledger row's JSON and sequence, then decodes only that source's movements.
+Selected required arrivals keep complete grants and exact mark and replacement proof;
+other interfaces' grants are outside this projection. The projection accepts only its
+source and increasing original sequence numbers, and exposes retained-delivery queries,
+not kernel admission decisions. The kernel's complete arrival index is unchanged.
+Other recovery readers validate their selected referenced grant content without copying
+unused authority into every historical movement.
 
 ## Caches over the JSON on disk
 

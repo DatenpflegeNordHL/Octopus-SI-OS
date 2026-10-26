@@ -346,6 +346,46 @@
     }
 
     #[test]
+    fn retained_delivery_reads_own_grants_and_checks_the_global_sequence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("movements.jsonl");
+        let metadata = dir.path().join("metadata");
+        std::fs::create_dir(&metadata).unwrap();
+        let source = InterfaceId::new("own");
+        let mut foreign = ledger_row(0);
+        foreign.from = Endpoint::Interface("other".into());
+        foreign.invocation_metadata = Some(InvocationMetadata::new(Default::default()).into());
+        let foreign_row = octopus_ledger::encode_durable_movement_row(&foreign, 0,
+            |bytes| Ok(ContentHash::of_bytes(bytes))).unwrap();
+        let mut own = ledger_row(1);
+        own.from = Endpoint::Interface(source.clone());
+        own.invocation_metadata = Some(InvocationMetadata::new(GrantProjection {
+            tools: vec!["file.write".into()], ..Default::default()
+        }).into());
+        let own_row = octopus_ledger::encode_durable_movement_row(&own, 1, |bytes| {
+            let hash = ContentHash::of_bytes(bytes);
+            std::fs::write(metadata.join(hash.to_hex()), bytes).unwrap(); Ok(hash)
+        }).unwrap();
+        std::fs::write(&path, format!("{foreign_row}\n{own_row}\n")).unwrap();
+        let mut projection = pending_delivery::Ledger::new(source.clone(), path.clone(), 1_048_576);
+        assert_eq!(projection.watermark().unwrap(), 2);
+        assert_eq!(projection.watermark().unwrap(), 2);
+        let mut sparse = octopus_ledger_index::InterfaceArrivalProjection::new(source.clone());
+        assert!(sparse.observe(&foreign).is_err());
+        sparse.observe(&own).unwrap();
+        assert!(sparse.observe(&own).is_err());
+        let mut gap = serde_json::from_str::<serde_json::Value>(&foreign_row).unwrap();
+        gap["seq"] = serde_json::json!(3);
+        use std::io::Write as _;
+        writeln!(std::fs::OpenOptions::new().append(true).open(&path).unwrap(), "{gap}").unwrap();
+        assert!(projection.watermark().unwrap_err().contains("not contiguous"));
+        std::fs::write(&path, format!("{foreign_row}\n{own_row}\n")).unwrap();
+        let blob = std::fs::read_dir(metadata).unwrap().next().unwrap().unwrap().path();
+        std::fs::write(blob, b"corrupt").unwrap();
+        assert!(pending_delivery::Ledger::new(source, path, 1_048_576).watermark().is_err());
+    }
+
+    #[test]
     fn ledger_index_advances_only_complete_delta_and_poison_is_permanent() {
         use std::io::Write as _;
 
@@ -5964,3 +6004,35 @@
             }
         }
     }
+
+#[test]
+#[ignore = "requires explicitly selected read-only ledger performance evidence"]
+fn selected_retained_delivery_cost() {
+    let home = PathBuf::from(std::env::var("OCTOPUS_BENCH_HOME").unwrap());
+    let interface = InterfaceId::new(std::env::var("OCTOPUS_BENCH_INTERFACE").unwrap());
+    let path = home.join("ledger/movements.jsonl");
+    let started = std::time::Instant::now();
+    let count = if std::env::var_os("OCTOPUS_BENCH_FULL_LEDGER").is_some() {
+        let ledger = ledger_rows::LedgerRows::detached(&path);
+        let mut index = octopus_ledger_index::ArrivalDedupIndex::new();
+        let mut reader = std::io::BufReader::new(std::fs::File::open(&path).unwrap());
+        loop {
+            match read_bounded_ledger_row(&mut reader, 16_777_216).unwrap() {
+                BoundedLedgerRow::Complete(row) => {
+                    let movement = ledger.decode_with_grant_if(&row, index.watermark(), |movement| {
+                        movement.kind == MovementKind::InterfaceArrival && movement.invocation_metadata
+                            .as_ref().and_then(|metadata| metadata.invocation())
+                            .is_some_and(|metadata| !metadata.required_verified_artifacts.is_empty())
+                    }).unwrap();
+                    index.catch_up_movements([movement]).unwrap();
+                }
+                BoundedLedgerRow::Eof => break,
+                BoundedLedgerRow::Partial => panic!("incomplete ledger"),
+            }
+        }
+        index.watermark()
+    } else {
+        pending_delivery::Ledger::new(interface, path, 16_777_216).watermark().unwrap()
+    };
+    println!("retained delivery: {count} rows in {} ms", started.elapsed().as_millis());
+}
