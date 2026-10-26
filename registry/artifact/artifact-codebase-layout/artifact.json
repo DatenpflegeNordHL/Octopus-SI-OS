@@ -189,7 +189,13 @@
             "executable_paths": [],
             "read_env_paths": [],
             "write_env_paths": [],
-            "executable_env_paths": []
+            "executable_env_paths": [],
+            "read_executable_relative_paths": [
+              {
+                "executable": "python3",
+                "relative_path": "../lib"
+              }
+            ]
           },
           "default_params": {}
         },

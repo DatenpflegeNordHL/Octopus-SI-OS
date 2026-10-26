@@ -171,8 +171,9 @@ policy, that edits the artifact like any other.
 
 ## The two-layer rule
 
-**The registries the system may change. The runtime it may not - but the
-runtime must support any registry change.**
+Memory and skill behavior belongs in registries and owner packages. Authorized
+runs may repair runtime source under the workspace grant and development rules,
+preserving the kernel's generic contracts.
 
 - Skill-named or memory-named **registry objects are fine**: tool descriptors,
   artifact descriptors, EE templates that allow those tools.

@@ -257,6 +257,14 @@ resources, including ICU locale data, alongside system libraries and timezone
 data. Application files and credentials come from the process authority
 declared by their owner.
 
+`read_executable_relative_paths` declares read-only runtime resources relative
+to the parent of a resolved executable, after following its symlinks. Each entry
+names an executable already in `executable_commands` and a relative path; a
+missing path fails authority formation. For example, a Python verifier declares
+`{"executable":"python3","relative_path":"../lib"}` for its installation's
+standard library. The host resolves paths without knowing the language or
+substituting a different interpreter. Copies cannot add these read grants.
+
 ## Add a provider
 
 1. Copy the nearest provider folder that speaks your wire, for example
