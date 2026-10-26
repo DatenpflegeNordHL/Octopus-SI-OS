@@ -40,17 +40,27 @@ because it changes the architecture for everyone.
 
 ## Before opening a pull request
 
-1. Run `npm ci --prefix app` and the checks that cover your change. See
-   [Development](docs/development.md#checks). At minimum:
+Describe the problem, your change, and how you checked it. Run the relevant
+[development checks](docs/development.md#checks), and add a regression check
+when it can catch the reported failure. State what you did not verify; a local
+test, a packaged build, and a real provider reply establish different things.
 
-   ```sh
-   cargo check --locked --workspace --all-targets
-   (cd app && npx tsc --noEmit --incremental false)
-   node app/scripts/check-public-source.cjs
-   ```
+The PR template's **Architecture fit** section is required only when a proposal
+changes architectural responsibilities, contracts, or mechanisms. Read
+[Architecture](docs/architecture.md) and the relevant
+[contracts](docs/contracts/README.md), then briefly explain why the approach
+fits the whole system and why a simpler use of existing primitives is not enough.
+An ordinary fix that restores an existing contract does not need this section.
 
-2. Add a focused regression test for a behavior change.
-3. Do not commit credentials, a Home, local absolute paths, or generated logs.
-4. Preserve fail-closed behavior. A failure must not pick another path or claim
-   success.
-5. Keep claims factual. Say what you ran and what you could not verify.
+A working implementation is not the only consideration: we also assess whether
+the capability belongs in Octopus and whether its approach keeps the architecture
+coherent. A useful report can lead to a different fix rather than merging its PR.
+
+## Labels
+
+Maintainers assign labels during the first review; contributors do not need
+label permissions to submit. Each issue gets one priority (`P0`–`P3`), and each
+PR gets either `urgent` or `non-urgent`. Add `feature` for new capabilities and
+`architecture` for architectural changes or questions requiring an architectural
+decision. Platform labels are used when the affected platform is known.
+Labels describe the work; they do not imply approval or a released fix.
