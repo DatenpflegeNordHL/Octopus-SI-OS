@@ -1228,6 +1228,7 @@ mod tests {
         );
 
         for interface in [
+            "world_mcp_firecrawl",
             "world_mcp_github",
             "world_mcp_unity",
         ] {
