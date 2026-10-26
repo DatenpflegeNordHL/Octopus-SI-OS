@@ -3976,6 +3976,14 @@ ipcMain.handle("octopus:os-workspace-mutate", async (event, token, request) => {
   return outcome;
 });
 
+let clientBrowserManager;
+ipcMain.handle("octopus:client-browser", (event, token, request) => {
+  if (event.senderFrame !== event.sender.mainFrame) throw new Error("Browser requires the owning client frame.");
+  clientBrowserManager ??= require("./clientBrowser.cjs").createClientBrowser({ electron: require("electron"),
+    getHome: resolveOctopusHome, requireAccess: value => getClientAccessController().requireSession(value, ["live"]) });
+  return clientBrowserManager.handle(token, event.sender, request);
+});
+
 ipcMain.handle("octopus:cdp-viewer-open", async (event, token, request) => {
   getClientAccessController().requireSession(token, ["live"]);
   return getCdpViewerManager().open(token, event.sender, request);

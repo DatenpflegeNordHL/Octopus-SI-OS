@@ -131,6 +131,8 @@ A workspace Driver operates in the chosen folder. A worktree Driver supplies a
 separate Git worktree. Choose according to where the work should happen;
 creating a task does not itself promise branch isolation.
 
+Web links in messages open in a browser tab inside the client. The toolbar retains an explicit **Open in default browser** action. These manually opened pages belong to the client window; opening one does not start a task or grant a model access to it.
+
 Task environment panels can expose files, a terminal, changes, a browser,
 desktop, or connection details. The available panels come from the task's
 actual environment. **Triggers** and **Archived** are views within Tasks.

@@ -3,6 +3,8 @@ import { AnimatePresence } from "motion/react";
 import { AppShell, readSidebarWidth } from "./AppShell";
 import { isVoiceCallActive } from "../voice/voicePresentation";
 import { SurfacePage } from "./SurfacePage";
+import { ClientBrowserTab } from "./ClientBrowserTab";
+import { OPEN_WEB_LINK_EVENT, type ClientBrowserState } from "../../clientBrowser";
 import { TaskBrowserPane, emptyTaskBrowserTabs, type TaskBrowserTabs } from "./TaskBrowserPane";
 import { MarkActivityView } from "../activity/MarkActivityView";
 import { ScheduledWorkspaceProvider } from "../scheduled/ScheduledWorkspace";
@@ -626,7 +628,7 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
     const surfacesById = new Map(visibleSurfaces.map((surface) => [surface.id, surface]));
     const nextTabs = secondaryTabs.filter((tab) => {
       const target = tab.target;
-      if (target.kind === "terminal" || target.kind === "files" || target.kind === "task_sources" || target.kind === "launcher") return true;
+      if (target.kind === "client_browser" || target.kind === "terminal" || target.kind === "files" || target.kind === "task_sources" || target.kind === "launcher") return true;
       if (target.kind === "worker_environment") return topology.projection.mode !== "live"
         || Boolean(resolveWorkerEnvironment(topology, target.target.workerEnvironmentId));
       const surface = surfacesById.get(target.surfaceId);
@@ -895,8 +897,34 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
     }));
   }, [activeClientSurfaceIdentity.workspaceKey, openSecondaryTab, surfaceRegistry.workerEnvironmentSurfaces, topology]);
 
+  const openClientBrowserTabRef = useRef(openSecondaryTab);
+  openClientBrowserTabRef.current = openSecondaryTab;
+  useEffect(() => {
+    let disposed = false;
+    const bridge = window.octopusTransport;
+    const show = (page: ClientBrowserState) => {
+      if (disposed) { void bridge?.clientBrowser({ action: "close", id: page.id }); return; }
+      openClientBrowserTabRef.current({ id: `browser:${page.id}`, target: { kind: "client_browser", pageId: page.id,
+        title: page.title, workspaceKey: activeClientSurfaceIdentity.workspaceKey } });
+    };
+    const open = (event: Event) => {
+      if (!(event instanceof CustomEvent) || typeof event.detail?.url !== "string") return;
+      event.preventDefault();
+      if (accessProfile !== "live" || !bridge?.clientBrowser) { appToast.danger("The in-app browser is unavailable."); return; }
+      void bridge.clientBrowser({ action: "open", url: event.detail.url }).then(page => { if (page) show(page); })
+        .catch(error => appToast.danger(error instanceof Error ? error.message : String(error)));
+    };
+    const stop = bridge?.onClientBrowserOpened(show);
+    const stopState = bridge?.onClientBrowserState(page => setSecondaryTabs(tabs => tabs.map(tab =>
+      tab.target.kind === "client_browser" && tab.target.pageId === page.id && tab.target.title !== page.title
+        ? { ...tab, target: { ...tab.target, title: page.title } } : tab)));
+    window.addEventListener(OPEN_WEB_LINK_EVENT, open);
+    return () => { disposed = true; window.removeEventListener(OPEN_WEB_LINK_EVENT, open); stop?.(); stopState?.(); };
+  }, [accessProfile, runtimeHost.home, activeClientSurfaceIdentity.workspaceKey, setSecondaryTabs]);
+
   const secondaryPaneTabs = useMemo<WorkspacePaneTab[]>(() => secondaryTabs.map((tab) => {
     const target = tab.target;
+    if (target.kind === "client_browser") return { glyph: "browser" as const, id: tab.id, showWhenSingle: true, title: target.title || "Browser" };
     if (target.kind === "launcher") {
       return { glyph: "browser" as const, id: tab.id, launcher: true, showWhenSingle: true, title: "New tab" };
     }
@@ -1449,6 +1477,7 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
       let state = transferSourceStateRef.current;
       if (closing.some((tab) => state.secondaryTabs.find((current) => current.id === tab.id) !== tab)) return;
       for (const tab of closing) {
+        if (tab.target.kind === "client_browser") { await window.octopusTransport?.clientBrowser({ action: "close", id: tab.target.pageId }); continue; }
         if (tab.target.kind !== "worker_environment") continue;
         const room = resolveWorkerEnvironment(topology, tab.target.target.workerEnvironmentId);
         const surface = room && resolvePaneSurface(room.workerEnvironment, tab.target.target);
@@ -2334,6 +2363,7 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
         activeTabId={activeSecondaryTabId}
         tabs={secondaryTabs}
       />
+      {secondaryTabs.map(tab => tab.target.kind === "client_browser" ? <div key={tab.id} className="h-full min-h-0" hidden={!secondaryPaneOpen || tab.id !== activeSecondaryTabId}><ClientBrowserTab id={tab.target.pageId} active={accessProfile === "live" && secondaryPaneOpen && tab.id === activeSecondaryTabId && !settingsOpen} /></div> : null)}
       <RetainedWorkerEnvironmentTabs
         accessProfile={accessProfile}
         active={secondaryPaneOpen}
@@ -2344,7 +2374,7 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
         tabs={secondaryTabs}
       />
       <Suspense fallback={<SurfaceLoadingState label={`Loading ${activeSecondaryPanePresentation?.title || "tab"}…`} />}>
-      {activeSecondaryTab?.target.kind === "terminal" || activeSecondaryTab?.target.kind === "files" || activeSecondaryTab?.target.kind === "worker_environment" ? null : activeSecondaryTab?.target.kind === "task_sources" ? (
+      {activeSecondaryTab?.target.kind === "client_browser" || activeSecondaryTab?.target.kind === "terminal" || activeSecondaryTab?.target.kind === "files" || activeSecondaryTab?.target.kind === "worker_environment" ? null : activeSecondaryTab?.target.kind === "task_sources" ? (
         <TaskSourcesPaneTab sources={activeTaskSources} />
       ) : !secondarySurface ? null : secondarySurface.rendererKind === "builtin.chat" && !secondaryRunIdentityReady ? (
         <SurfaceLoadingState label="Opening task…" />

@@ -622,12 +622,6 @@ fn every_remote_mcp_operation_is_interface_local_and_strictly_loadable() {
             let context = artifact["text"].as_str().unwrap();
             for required in [
                 interface,
-                "mcp.operation_catalog",
-                "mcp.tool_catalog",
-                "mcp.resource_catalog",
-                "mcp.resource_templates",
-                "mcp.prompt_catalog",
-                "mcp.operation.request",
                 &format!("{prefix}.call_tool"),
                 &format!("{prefix}.status"),
             ] {

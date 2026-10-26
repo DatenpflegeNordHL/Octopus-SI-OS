@@ -86,6 +86,7 @@ jobs:
           node scripts/test-sidebar.cjs
           node scripts/test-stylesheet-contracts.cjs
           node scripts/test-browser-surface.cjs
+          node --test scripts/test-client-browser.cjs
           node scripts/test-resume-glyph-parity.cjs
           node scripts/test-client-catalog-cycle.cjs
           node scripts/test-shell-pane-chrome.cjs
@@ -125,6 +126,7 @@ jobs:
           node registry/interface/world_operator_chat/test_home_state.cjs
           node registry/interface/world_operator_chat/test_maintenance_client.cjs
           python3 registry/verifier/tool_result_correspondence/tests/test_verify.py
+          python3 registry/verifier/tool_call_allowed/tests/test_system_python.py
           python3 registry/interface/world_slack/tests/test_slack_contract.py
           node registry/worker_environment_kind/desktop_session/packages/octopus-system-gui-env/native/configure-transport.test.cjs
           node registry/worker_environment_kind/browser_session/packages/octopus-browser-session-env/native/setup-host.test.cjs
@@ -192,6 +194,11 @@ jobs:
       - name: Policy, ledger proof, runtime checkpoint, Home binding and file publication contracts
         run: |
           cargo nextest run --locked -p octopus-policy -p octopus-ledger-index -p octopus-runtime -p octopus-operator-chat-client -p octopus-model-context-render -p octopus-file-storage --lib --test instructions -E 'package(octopus-policy) | package(octopus-ledger-index) | package(octopus-runtime) | binary(instructions) | (package(octopus-operator-chat-client) & test(real_registry_home_plan_exports_authoring_and_exact_policy_requirements)) | (package(octopus-file-storage) & test(/^publication::tests::/))'
+
+      - name: MCP operations and optional reasoning model catalogues
+        run: |
+          cargo test --locked -p octopus-mcp-client --lib every_remote_mcp_operation_is_interface_local_and_strictly_loadable
+          cargo test --locked -p octopus-world-terminal-client --lib every_registry_provider_catalog_admits_its_default_model_and_effort
 
   native-client:
     runs-on: macos-latest

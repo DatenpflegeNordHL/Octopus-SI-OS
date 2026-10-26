@@ -482,6 +482,17 @@ contextBridge.exposeInMainWorld("octopusTransport", {
   closeNativeBrowserViewer(request) {
     return invokeAccess("octopus:native-browser-viewer-close", request);
   },
+  clientBrowser(request) { return invokeAccess("octopus:client-browser", request); },
+  onClientBrowserState(listener) {
+    const handler = (_event, state) => listener(state);
+    ipcRenderer.on("octopus:client-browser-state", handler);
+    return () => ipcRenderer.removeListener("octopus:client-browser-state", handler);
+  },
+  onClientBrowserOpened(listener) {
+    const handler = (_event, state) => listener(state);
+    ipcRenderer.on("octopus:client-browser-opened", handler);
+    return () => ipcRenderer.removeListener("octopus:client-browser-opened", handler);
+  },
   closeNativeBrowserPage(request) {
     return invokeAccess("octopus:native-browser-page-close", request);
   },

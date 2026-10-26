@@ -51,7 +51,12 @@ export type TransferableWorkspacePaneTarget =
   | WorkspaceSurfacePaneTarget
   | WorkspaceWorkerEnvironmentPaneTarget;
 
+export type WorkspaceClientBrowserPaneTarget = {
+  kind: "client_browser"; pageId: string; title: string; workspaceKey: ClientWorkspaceKey;
+};
+
 export type WorkspacePaneTarget =
+  | WorkspaceClientBrowserPaneTarget
   | TransferableWorkspacePaneTarget
   | WorkspaceLauncherPaneTarget
   | WorkspaceTaskSourcesPaneTarget
@@ -293,7 +298,7 @@ export function screenPointOutsideClientWindow(
 export function transferableWorkspacePaneTarget(
   target: WorkspacePaneTarget,
 ): TransferableWorkspacePaneTarget | null {
-  return target.kind === "terminal" || target.kind === "task_sources" || target.kind === "launcher" ? null : target;
+  return target.kind === "client_browser" || target.kind === "terminal" || target.kind === "task_sources" || target.kind === "launcher" ? null : target;
 }
 
 export function clientWindowChatStorageScope(windowScope: string, pane: "home" | "main" | "secondary"): string {

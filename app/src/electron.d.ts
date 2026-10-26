@@ -1,3 +1,4 @@
+import type { ClientBrowserRequest, ClientBrowserState } from "./clientBrowser";
 import type {
   ClientExtensionActionOutcome,
   ClientExtensionActionRequest,
@@ -168,6 +169,9 @@ declare global {
       mutateScheduledInterface(request: OctopusScheduledMutationRequest): Promise<OctopusScheduledMutationOutcome>;
       mutateApplicationPrivateConfiguration(request: OctopusApplicationPrivateConfigurationMutation): Promise<OctopusApplicationPrivateConfigurationOutcome>;
       mutateOctopusOsWorkspace(request: OctopusOsWorkspaceMutationRequest): Promise<OctopusOsWorkspaceMutationOutcome>;
+      clientBrowser(request: ClientBrowserRequest): Promise<ClientBrowserState | null>;
+      onClientBrowserState(listener: (state: ClientBrowserState) => void): () => void;
+      onClientBrowserOpened(listener: (state: ClientBrowserState) => void): () => void;
       openCdpViewer(request: OctopusCdpViewerOpenRequest): Promise<OctopusCdpViewerState>;
       prepareNativeBrowserViewer(request: OctopusNativeBrowserViewerPrepareRequest): Promise<OctopusNativeBrowserViewerPrepared>;
       acknowledgeNativeBrowserViewer(request: OctopusNativeBrowserViewerSyncRequest): Promise<OctopusNativeBrowserViewerState>;

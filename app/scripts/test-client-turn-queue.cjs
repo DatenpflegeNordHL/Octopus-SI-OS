@@ -439,6 +439,7 @@ for (const [hadAttachments, attachments, recoverPreparedMessage] of [
   const markdownDependencies = Object.fromEntries(await Promise.all(["micromark", "micromark-core-commonmark", "remark-parse", "remark-gfm", "remark-math", "unified"].map(async (id) => [id, await import(id)])));
   const markdown = load("src/components/chat/markdownPresentation.ts", markdownDependencies);
   const messageContent = load("src/components/chat/MessageContent.tsx", {
+    "../../clientBrowser": load("src/clientBrowser.ts", { "./toasts": { appToast: { danger: noop } } }),
     "react-markdown": await import("react-markdown"), "rehype-katex": await import("rehype-katex"),
     "../../appearance": { useAppearance: () => ({}) }, "../../runtimeFormat": { copyText: noop },
     "../../design-system/components": { OcButton: empty, OcDialog: empty, OcDialogFooter: empty, OcDialogHeader: empty },
@@ -469,9 +470,15 @@ for (const [hadAttachments, attachments, recoverPreparedMessage] of [
   await act(async () => host.render(React.createElement(messageContent.MessageContent, { text: "[Report](/workspace/report.md)" })));
   assert.ok(document.querySelector("a") === null, "a surface without a Files owner does not navigate a local link");
   await act(async () => host.render(React.createElement(messageContent.MessageContent, { text: "[Website](https://example.com/)" })));
+  const webLinks = [];
+  const openWebLink = event => { event.preventDefault(); webLinks.push(event.detail.url); };
+  window.addEventListener("octopus:open-web-link", openWebLink);
   const externalClick = new window.MouseEvent("click", { bubbles: true, cancelable: true });
   await act(async () => document.querySelector("a").dispatchEvent(externalClick));
-  assert.equal(externalClick.defaultPrevented, true, "external links still require their existing confirmation");
+  assert.equal(externalClick.defaultPrevented, true, "web links never navigate the app document");
+  assert.deepEqual(webLinks, ["https://example.com/"], "web links open in the client browser");
+  assert.equal(document.querySelector('[role="dialog"]'), null, "ordinary links do not prompt for an external browser");
+  window.removeEventListener("octopus:open-web-link", openWebLink);
   const realNow = performance.now;
   let streamNow = 1_000;
   Object.defineProperty(performance, "now", { configurable: true, value: () => streamNow });
