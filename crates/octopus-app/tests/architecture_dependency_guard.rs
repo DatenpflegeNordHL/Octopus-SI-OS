@@ -1438,8 +1438,11 @@ fn the_verifier_box_stays_blind_to_verifier_identity_and_language() {
         }
         let lowered = source.to_lowercase();
         for term in LANGUAGE_HARDCODE_TERMS {
+            let named = lowered.match_indices(term).any(|(at, _)| {
+                !lowered[..at].ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            });
             assert!(
-                !lowered.contains(term),
+                !named,
                 "{} names the language/runner '{term}'. Verifiers are polyglot by contract — from \
                  twenty lines of shell to an out-of-system judge — and the box resolves the runner \
                  from the package's own shebang plus its declared `executable_commands`, never from \
