@@ -9,7 +9,7 @@
     "read_paths": [],
     "write_paths": [],
     "executable_paths": [],
-    "executable_commands": ["/usr/bin/python3", "tesseract"],
+    "executable_commands": ["/usr/bin/env", "python3", "tesseract"],
     "read_env_paths": [],
     "write_env_paths": [],
     "executable_env_paths": [],

@@ -9,7 +9,7 @@
     "read_paths": [],
     "write_paths": [],
     "executable_paths": [],
-    "executable_commands": ["/bin/sh", "/bin/cat", "/usr/bin/python3"],
+    "executable_commands": ["/bin/sh", "/bin/cat", "python3"],
     "read_env_paths": [],
     "write_env_paths": [],
     "executable_env_paths": [],
