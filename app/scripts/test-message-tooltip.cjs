@@ -68,6 +68,28 @@ test("leaving before the delay cancels the pending open", async () => {
   assert.ok(!tooltip());
 });
 
+test("moving between triggers leaves only the latest tooltip and dragging opens none", async () => {
+  const MessageTooltip = await compiled;
+  await React.act(async () => root.render(React.createElement("div", { key: ++shows },
+    ...["First", "Second"].map(label => React.createElement(MessageTooltip, { key: label, label, delayMs: 30 }, label)))));
+  const [first, second] = document.querySelectorAll(".chat-tooltip-trigger");
+  await fire(first, "pointermove");
+  await fire(second, "pointermove");
+  await React.act(() => delay(50));
+  assert.deepEqual([...document.querySelectorAll('[role="tooltip"]')].map(node => node.textContent), ["Second"]);
+  await fire(second, "pointerout", { relatedTarget: document.body });
+  await fire(first, "pointerout", { relatedTarget: document.body });
+  await fire(first, "pointermove");
+  await React.act(() => delay(50));
+  await fire(second, "pointermove");
+  await React.act(() => delay(50));
+  assert.deepEqual([...document.querySelectorAll('[role="tooltip"]')].map(node => node.textContent), ["Second"]);
+  await fire(second, "pointerout", { relatedTarget: document.body });
+  await fire(second, "pointermove", { buttons: 1 });
+  await React.act(() => delay(50));
+  assert.equal(tooltip(), null);
+});
+
 test("an SVG binding keeps its group and exposes the shared tooltip on hover", async () => {
   const MessageTooltip = await compiled;
   await React.act(async () => root.render(React.createElement("svg", null,

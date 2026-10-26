@@ -64,7 +64,9 @@ export function useRuntimeTopology(
   focusedRunIds: readonly string[] = [],
   includeLedger = true,
 ): RuntimeTopologyState {
-  const [snapshot, setSnapshot] = useState<TopologySnapshot>(() => emptySnapshot());
+  const [snapshot, setSnapshot] = useState<TopologySnapshot>(() => emptySnapshot({
+    ...emptyProjection, mode: "connecting", label: "Loading topology", detail: "",
+  }));
   // Every projection change on disk re-projects the world in place: no flash back to a
   // loading state, no stale "live" claim. The first read is the only "connecting" moment.
   const generation = useProjectionGeneration(includeLedger, enabled);
@@ -143,8 +145,8 @@ export function useRuntimeTopology(
         projection: {
           mode: "connecting",
           endpoint: projectionTargetLabel(),
-          label: "Reading projection",
-          detail: "Reading registry descriptors, binding manifests, artifacts, marks, and ledger rows",
+          label: "Loading topology",
+          detail: "",
         },
       }));
     }

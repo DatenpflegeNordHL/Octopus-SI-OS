@@ -118,6 +118,22 @@ test("page loaders show only the centered logo until the catalog settles", async
     assert.ok(container.querySelector("header, input, h1") === null);
   };
   try { expectLogo(fallback.container, "surface-loading-state"); } finally { await fallback.close(); }
+  const topology = loader({
+    "./ArtifactTransferAnimation": { useArtifactTransferFeed: () => ({ feed: {}, error: "" }) },
+    "../toasts": { useAppErrorToast: noop },
+  });
+  const { TopologyStage } = topology("src/components/TopologyStage.tsx");
+  const snapshot = topology("src/data/topology.ts").emptySnapshot({ mode: "connecting", label: "Loading topology", detail: "" });
+  const props = { snapshot, query: "", scope: "World", viewMode: "zones", filters: { statuses: {} }, selected: null, onSelect: noop };
+  const stage = await mount(TopologyStage, props);
+  try {
+    expectLogo(stage.container);
+    await stage.render({ ...props, scope: "System" });
+    expectLogo(stage.container);
+    await stage.render({ ...props, snapshot: { ...snapshot, projection: { mode: "error", label: "Read failed", detail: "Unavailable" } } });
+    assert.equal(stage.container.querySelector(".octopus-loading-logo"), null);
+    assert.match(stage.container.textContent, /Read failed/);
+  } finally { await stage.close(); }
   const incidents = [];
   for (const name of ["ApplicationsView", "DriversView"]) {
     const pending = new Map();

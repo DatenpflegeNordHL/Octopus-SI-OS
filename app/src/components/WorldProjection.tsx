@@ -72,6 +72,8 @@ export const WorldProjection = memo(function WorldProjection({ environments, reg
   );
 
   function onPointerDown(event: ReactPointerEvent<SVGSVGElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -565,10 +567,11 @@ function zoneRoutes(
       const from = trimToCircle(dot.point, runPoint, 8);
       const to = trimToCircle(runPoint, dot.point, 7);
       const interfaces = run.world.filter((member) => worldDotByName.get(member)?.id === dot.id);
-      const label = `Run: ${run.run.id}\n${interfaces.length === 1 ? "Interface" : "Interfaces"}: ${interfaces.join("\n")}`;
+      const endpoints = `System: ${run.run.worker}\nWorld: ${interfaces.join(", ")}`;
+      const label = `System: ${compactDashboardLabel(run.run.worker, 32)}\nWorld: ${compactDashboardLabel(interfaces.join(", "), 32)}`;
       routes.push(
-        <DashboardTooltip asChild text={label} key={`route:${zone.env.id}:${run.run.id}:${dot.id}`}>
-          <g className="wp-route-target" tabIndex={0} role="img" aria-label={label}>
+        <DashboardTooltip asChild compact text={label} key={`route:${zone.env.id}:${run.run.id}:${dot.id}`}>
+          <g className="wp-route-target" role="img" aria-label={endpoints}>
             <line className="wp-route" x1={from.x} y1={from.y} x2={to.x} y2={to.y} />
             <line className="wp-route-hit" x1={from.x} y1={from.y} x2={to.x} y2={to.y} />
           </g>

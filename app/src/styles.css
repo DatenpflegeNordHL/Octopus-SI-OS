@@ -6179,15 +6179,14 @@
   stroke-width: 12;
   vector-effect: non-scaling-stroke;
   pointer-events: stroke;
-  cursor: help;
+  cursor: inherit;
 }
 
-.wp-route-target:focus-visible {
+.wp-route-target {
   outline: none;
 }
 
-.wp-route-target:hover .wp-route,
-.wp-route-target:focus-visible .wp-route {
+.wp-route-target:hover .wp-route {
   stroke: var(--color-accent-blue);
   stroke-width: 2;
 }
