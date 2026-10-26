@@ -277,6 +277,51 @@
     }
 
     #[test]
+    fn writer_edge_candidates_keep_unattributed_rows_and_validate_ledger_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("movements.jsonl");
+        let index_path = dir.path().join("ledger-index.sqlite");
+        let source = InterfaceId::new("source");
+        let door = InterfaceId::new("door");
+        let mut rows: Vec<_> = (0..4).map(ledger_row).collect();
+        rows[1].kind = MovementKind::InterfaceOutbound;
+        rows[1].from = Endpoint::Interface(source.clone());
+        rows[1].to = Endpoint::Interface(door.clone());
+        rows[2].kind = MovementKind::InterfaceOutbound;
+        rows[2].to = Endpoint::Interface(door.clone());
+        let mut ledger = String::new();
+        let mut row_ranges = Vec::new();
+        for row in &rows {
+            let start = ledger.len() as u64;
+            ledger.push_str(&format!("{}\n", serde_json::to_string(row).unwrap()));
+            row_ranges.push((start, ledger.len() as u64));
+        }
+        std::fs::write(&path, &ledger).unwrap();
+        let mut index = LedgerSqliteIndex::open(&index_path).unwrap();
+        index.ingest_from(&SnapshotMovementLog { rows, durable_end_offset: ledger.len() as u64, row_ranges }).unwrap();
+        drop(index);
+        let blobs = dir.path().join("blobs");
+        let evidence = CheckedRunEvidence { movements_path: &path, ledger_index_path: &index_path, blobs_dir: &blobs,
+            max_control_frame_bytes: 4096, max_manifest_bytes: 4096, max_payload_bytes: 4096 };
+        let mut reader = FileCheckedRunReader::open(&evidence, None).unwrap();
+        let selected = reader.indexed_outbound_edges(&[(&source, &door)]).unwrap().unwrap();
+        assert_eq!(selected.iter().map(|row| row.seq).collect::<Vec<_>>(), [1, 3]);
+        reader.reader.seek(std::io::SeekFrom::Start(selected[0].start_offset)).unwrap();
+        reader.next_seq = selected[0].seq;
+        assert!(reader.movement(1).unwrap().unwrap().invocation_metadata.is_none());
+        let mut bytes = ledger.into_bytes();
+        bytes[selected[0].start_offset as usize] = b'!';
+        std::fs::write(&path, bytes).unwrap();
+        let mut reader = FileCheckedRunReader::open(&evidence, None).unwrap();
+        assert!(reader.indexed_outbound_edges(&[(&source, &door)]).unwrap().is_none());
+        reader.movement(0).unwrap();
+        assert!(reader.movement(1).is_err());
+        std::fs::remove_file(&index_path).unwrap();
+        let mut reader = FileCheckedRunReader::open(&evidence, None).unwrap();
+        assert!(reader.indexed_outbound_edges(&[(&source, &door)]).unwrap().is_none());
+    }
+
+    #[test]
     fn selected_ledger_grants_preserve_authority_and_validate_unselected_content() {
         let dir = tempfile::tempdir().unwrap();
         let metadata = dir.path().join("metadata");

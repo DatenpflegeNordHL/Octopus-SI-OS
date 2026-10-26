@@ -6171,6 +6171,25 @@
 .wp-route {
   stroke: rgba(51, 156, 255, 0.4);
   stroke-width: 1.1;
+  pointer-events: none;
+}
+
+.wp-route-hit {
+  stroke: transparent;
+  stroke-width: 12;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: help;
+}
+
+.wp-route-target:focus-visible {
+  outline: none;
+}
+
+.wp-route-target:hover .wp-route,
+.wp-route-target:focus-visible .wp-route {
+  stroke: var(--color-accent-blue);
+  stroke-width: 2;
 }
 
 .wp-route.is-zone {

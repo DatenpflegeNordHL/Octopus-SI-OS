@@ -269,6 +269,11 @@ resources, including ICU locale data, alongside system libraries and timezone
 data. Application files and credentials come from the process authority
 declared by their owner.
 
+The macOS desktop helper builds its pinned Swift package with SwiftPM sandboxing
+disabled. This avoids nesting SwiftPM's manifest sandbox inside the caller's
+existing process sandbox; the caller's declared filesystem, network and process
+restrictions remain in force.
+
 `read_executable_relative_paths` declares read-only runtime resources relative
 to the parent of a resolved executable, after following its symlinks. Each entry
 names an executable already in `executable_commands` and a relative path; a

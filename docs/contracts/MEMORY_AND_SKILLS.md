@@ -3,6 +3,12 @@
 Memory, skills, and persona are artifacts bound to runs. Updating one is an
 ordinary run under policy.
 
+The shared worker-role artifact identifies Octopus as the persistent system and
+a run as one part of its work. Home and Task role artifacts specialize that
+role; provider choice does not change the identity. This guidance is bound
+context, not additional authority or evidence of work elsewhere. The realtime
+provider's session instructions present the same identity through voice.
+
 ## Memory is an artifact
 
 Memory **state** is an artifact made visible through bindings. A memory

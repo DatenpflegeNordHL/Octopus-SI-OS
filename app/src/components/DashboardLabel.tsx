@@ -13,8 +13,8 @@ export function compactDashboardLabel(text: string, limit = DASHBOARD_LABEL_LIMI
   return `${parts.slice(0, limit - suffixLength - 1).join("")}…${parts.slice(-suffixLength).join("")}`;
 }
 
-export function DashboardTooltip({ text, children }: { text: string; children: ReactNode }) {
-  return <MessageTooltip delayMs={200} side="bottom" variant="shell"
+export function DashboardTooltip({ text, children, asChild = false }: { text: string; children: ReactNode; asChild?: boolean }) {
+  return <MessageTooltip asChild={asChild} delayMs={200} side="bottom" variant="shell"
     label={<span className="dashboard-tooltip-label">{text}</span>}>
     {children}
   </MessageTooltip>;

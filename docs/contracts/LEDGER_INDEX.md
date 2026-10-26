@@ -131,7 +131,13 @@ What keeps it a cache:
   projection of rows already appended.
 
 Provider recovery validates movement projections before selecting complete grants.
-Writer history materializes them only for its own call and result edges. Retained
+Writer history uses the SQLite edge index to locate its declared call and result
+transfers, then verifies their bytes, grants and ordered preimages against the
+ledger. Selection includes transfers missing runtime metadata so they still fail
+validation. The indexed boundary is checked against the log; an unavailable or
+unusable index reads the authoritative prefix, and later rows are read from that
+boundary. Complete grants are materialized only for the writer's own call and
+result edges. Retained
 delivery keeps complete grants for required arrivals, preserving exact contract
 comparisons during replacement. Other rows still validate their referenced grant
 content without copying unused authority into every historical movement.

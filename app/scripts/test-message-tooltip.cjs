@@ -68,6 +68,21 @@ test("leaving before the delay cancels the pending open", async () => {
   assert.ok(!tooltip());
 });
 
+test("an SVG binding keeps its group and exposes the shared tooltip on hover", async () => {
+  const MessageTooltip = await compiled;
+  await React.act(async () => root.render(React.createElement("svg", null,
+    React.createElement(MessageTooltip, { asChild: true, label: "Run: reader · Interface: files", delayMs: 30 },
+      React.createElement("g", { role: "img", tabIndex: 0, "aria-label": "Binding" }, React.createElement("line", { x1: 0, y1: 0, x2: 20, y2: 20 }))))));
+  const group = document.querySelector("svg g");
+  assert.equal(group.getAttribute("role"), "img");
+  assert.equal(document.querySelector("svg span"), null);
+  group.getBoundingClientRect = w.HTMLElement.prototype.getBoundingClientRect;
+  await fire(group, "pointermove");
+  await React.act(() => delay(50));
+  assert.equal(tooltip().textContent, "Run: reader · Interface: files");
+  assert.equal(group.getAttribute("aria-describedby"), tooltip().id);
+});
+
 test("pressing, clicking, blurring the window or scrolling closes an open tooltip", async () => {
   for (const close of [
     () => fire(trigger(), "pointerdown"),
