@@ -277,6 +277,30 @@
     }
 
     #[test]
+    fn selected_ledger_grants_preserve_authority_and_validate_unselected_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let metadata = dir.path().join("metadata");
+        std::fs::create_dir(&metadata).unwrap();
+        let mut movement = ledger_row(0);
+        movement.invocation_metadata = Some(InvocationMetadata::new(GrantProjection {
+            tools: vec!["file.write".into()], interfaces: vec!["system_room".into()], ..Default::default()
+        }).into());
+        let row = octopus_ledger::encode_durable_movement_row(&movement, 0, |bytes| {
+            let hash = ContentHash::of_bytes(bytes);
+            std::fs::write(metadata.join(hash.to_hex()), bytes).unwrap(); Ok(hash)
+        }).unwrap();
+        let rows = ledger_rows::LedgerRows::detached(&dir.path().join("movements.jsonl"));
+        assert_eq!(rows.decode_with_grant_if(row.as_bytes(), 0, |_| true).unwrap(), movement);
+        let projected = rows.decode_with_grant_if(row.as_bytes(), 0, |_| false).unwrap();
+        let grant = &projected.invocation_metadata.as_ref().unwrap().invocation().unwrap().grant;
+        assert!(grant.tools.is_empty());
+        assert_eq!(grant.interfaces, ["system_room"]);
+        let blob = std::fs::read_dir(&metadata).unwrap().next().unwrap().unwrap().path();
+        std::fs::remove_file(blob).unwrap();
+        assert!(rows.decode_with_grant_if(row.as_bytes(), 0, |_| false).is_err());
+    }
+
+    #[test]
     fn ledger_index_advances_only_complete_delta_and_poison_is_permanent() {
         use std::io::Write as _;
 

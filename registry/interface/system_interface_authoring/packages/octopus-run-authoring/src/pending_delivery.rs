@@ -58,7 +58,11 @@ impl Ledger {
             };
             let movement = self
                 .ledger
-                .decode(&row, self.index.watermark())?;
+                .decode_with_grant_if(&row, self.index.watermark(), |movement| {
+                    movement.kind == MovementKind::InterfaceArrival
+                        && movement.invocation_metadata.as_ref().and_then(|metadata| metadata.invocation())
+                            .is_some_and(|metadata| !metadata.required_verified_artifacts.is_empty())
+                })?;
             if movement.seq.0 != self.index.watermark() {
                 return Err("retained output ledger is not contiguous".into());
             }

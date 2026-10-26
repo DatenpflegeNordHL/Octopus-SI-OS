@@ -130,6 +130,12 @@ What keeps it a cache:
 - **Never consulted for a kernel decision**, and never written except as a
   projection of rows already appended.
 
+Provider recovery validates movement projections before selecting complete grants.
+Writer history materializes them only for its own call and result edges. Retained
+delivery keeps complete grants for required arrivals, preserving exact contract
+comparisons during replacement. Other rows still validate their referenced grant
+content without copying unused authority into every historical movement.
+
 ## Caches over the JSON on disk
 
 The ledger is one truth surface. The descriptor and run JSON on disk is the

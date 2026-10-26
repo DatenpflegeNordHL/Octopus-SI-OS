@@ -153,6 +153,22 @@ impl<'a> FileCheckedRunReader<'a> {
     pub(crate) fn with_provider_context(mut self, ctx: &InterfaceLiftContext) -> Self { self.provider_context = Some(ctx.clone()); self }
 
     pub fn next_sequence(&self) -> u64 { self.next_seq }
+
+    pub(crate) fn movement_with_grant_if(
+        &mut self, seq: u64, needs_grant: impl FnOnce(&Movement) -> bool,
+    ) -> Result<Option<Movement>, String> {
+        if seq != self.next_seq { return Err("checked authoring reader lost its exact cursor".into()); }
+        let start = self.reader.stream_position().map_err(|e| e.to_string())?;
+        let row = match read_bounded_ledger_row(&mut self.reader, self.evidence.max_control_frame_bytes)? {
+            BoundedLedgerRow::Complete(row) => row,
+            BoundedLedgerRow::Partial | BoundedLedgerRow::Eof => return Ok(None),
+        };
+        let movement = self.rows.decode_with_grant_if(&row, seq, needs_grant)?;
+        if movement.seq.0 != seq { return Err("checked authoring evidence ledger has a sequence gap".into()); }
+        self.note(seq, start, &row, &movement)?;
+        self.next_seq = seq.checked_add(1).ok_or("checked authoring sequence overflow")?;
+        Ok(Some(movement))
+    }
 }
 
 impl CheckedRunEvidenceReader for FileCheckedRunReader<'_> {
@@ -195,17 +211,7 @@ impl CheckedRunEvidenceReader for FileCheckedRunReader<'_> {
         Ok(())
     }
     fn movement(&mut self, seq: u64) -> Result<Option<Movement>, String> {
-        if seq != self.next_seq { return Err("checked authoring reader lost its exact cursor".into()); }
-        let start = self.reader.stream_position().map_err(|e| e.to_string())?;
-        let row = match read_bounded_ledger_row(&mut self.reader, self.evidence.max_control_frame_bytes)? {
-            BoundedLedgerRow::Complete(row) => row,
-            BoundedLedgerRow::Partial | BoundedLedgerRow::Eof => return Ok(None),
-        };
-        let movement = self.rows.decode(&row, seq)?;
-        if movement.seq.0 != seq { return Err("checked authoring evidence ledger has a sequence gap".into()); }
-        self.note(seq, start, &row, &movement)?;
-        self.next_seq = seq.checked_add(1).ok_or("checked authoring sequence overflow")?;
-        Ok(Some(movement))
+        self.movement_with_grant_if(seq, |_| true)
     }
     fn artifact(&mut self, reference: &ArtifactRef) -> Result<(InterfaceArtifactManifest, Vec<u8>), String> {
         read_pinned_artifact_with_bounds(self.evidence.blobs_dir, self.evidence.max_manifest_bytes,
