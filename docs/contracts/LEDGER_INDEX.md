@@ -149,9 +149,11 @@ bindings are replayed through the ordinary per-edge gates. A repaired recipient
 catches up while the runtime stays up, with no resend, no poller, and no
 delivery queue.
 
-**The registry snapshot guard.** A walk folds paths and metadata into a
-fingerprint. Only files with recent or unusable timestamps additionally contribute
-their bytes. Parsing and validation run when the fingerprint changes. Before/after
+**The registry snapshot guard.** A walk folds paths, metadata and cached content
+digests into a fingerprint. Changed files and files with recent or unusable
+timestamps are reread; settled, unchanged files reuse their digests. Cache age
+alone cannot change the fingerprint. Parsing and validation run when the
+fingerprint changes. Before/after
 observations must agree. Unreadable or stably malformed descriptors fail closed;
 concurrent writes return `RegistryUnstable`.
 Retained delivery preserves that typed refusal, the artifact and delivery identity.

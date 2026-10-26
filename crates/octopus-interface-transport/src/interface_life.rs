@@ -1005,6 +1005,7 @@ pub(crate) fn resolved_spawn_life_source_fingerprint(
             &mut material,
             &format!("repository-file/{declared}"),
             &path,
+            true,
         )?;
     }
     append_imported_life_dependency_fingerprints(
@@ -1105,7 +1106,7 @@ fn append_json_metadata_fingerprint(
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or_else(|| format!("interface JSON '{}' has a non-UTF-8 name", path.display()))?;
-        append_path_metadata_fingerprint(material, name, &path)?;
+        append_path_metadata_fingerprint(material, name, &path, true)?;
     }
     Ok(())
 }
@@ -1114,6 +1115,7 @@ fn append_path_metadata_fingerprint(
     material: &mut Vec<u8>,
     name: &str,
     path: &Path,
+    read_unsettled: bool,
 ) -> Result<(), String> {
     let observed = SystemTime::now();
     let metadata = std::fs::symlink_metadata(path).map_err(|error| {
@@ -1141,7 +1143,7 @@ fn append_path_metadata_fingerprint(
     for value in executable_file_stamp(&metadata) {
         append_fingerprint_part(material, "file-state", &value.to_le_bytes());
     }
-    if !FileStamp::of(&metadata).is_settled(observed) {
+    if read_unsettled && !FileStamp::of(&metadata).is_settled(observed) {
         let digest = ImportedExecutableVerification::default().digest(path, &metadata)?;
         append_fingerprint_part(material, "unsettled-content", digest.sha256.as_bytes());
     }
@@ -1240,7 +1242,7 @@ fn append_owner_life_dependencies(
             root,
             None,
         )?;
-        append_path_metadata_fingerprint(material, &declared, &file)?;
+        append_path_metadata_fingerprint(material, &declared, &file, !content)?;
         if content {
             let metadata = std::fs::symlink_metadata(&file).map_err(|error| error.to_string())?;
             let digest = ImportedExecutableVerification::default().digest(&file, &metadata)?;
@@ -1708,6 +1710,7 @@ fn append_imported_life_dependency_fingerprints(
                 material,
                 &executable_name,
                 &dependency.executable_path,
+                true,
             )?,
         }
         append_fingerprint_part(
@@ -4828,6 +4831,10 @@ mod tests {
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o644)).unwrap();
         let interface = InterfaceId::new("world_authored");
         let first = resolve_spawn_life_config(&registry, &interface).unwrap().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let settled = resolve_spawn_life_config(&registry, &interface).unwrap().unwrap();
+        assert_eq!(first.fingerprint, settled.fingerprint,
+            "an unchanged executable must not restart when its cache observation settles");
         let source = |resolved: &ResolvedSpawnLifeConfig| resolved_spawn_life_source_fingerprint(&registry, &interface, resolved,
             &mut ImportedExecutableVerification::default()).unwrap();
         let first_source = source(&first);

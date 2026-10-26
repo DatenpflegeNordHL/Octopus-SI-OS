@@ -44,7 +44,8 @@ must already be settled before the read starts; a cached racy observation never
 becomes reusable merely because time passes. Missing or future timestamps keep
 the read path. Platforms without a change timestamp also keep that path.
 Build receipts still check the executable digest, and changed content participates
-in the life restart fingerprint. This is freshness and receipt consistency, not
+in the life restart fingerprint. Cache age alone cannot change that fingerprint
+or restart a process. This is freshness and receipt consistency, not
 a security boundary against an actor able to replace both executable and receipt.
 
 The generic Rust life bridge acknowledges readiness publication. Awaiting its
