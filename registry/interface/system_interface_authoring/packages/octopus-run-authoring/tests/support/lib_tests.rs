@@ -3332,9 +3332,13 @@
         let rejected: ToolResultArtifact = serde_json::from_slice(&rejected_envelope.read_artifact_payload().unwrap()).unwrap();
         authoring_retry::validate_rejected_result(&rejection_ctx, &handoff.config, &rejected_movement, &rejected_envelope, &original, &rejected).unwrap();
         let consumed = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(
-            result_identity.consume_if_matches(&rejection_ctx, &rejected_movement, &rejected_envelope, "file.write.result")
+            result_identity.consume_if_matches(&rejection_ctx, &ProviderHandoffSession::new(&rejection_ctx).unwrap(), &rejected_movement, &rejected_envelope, "file.write.result")
         ).unwrap();
         assert!(consumed);
+        let wrong_ledger = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(
+            result_identity.consume_if_matches(&rejection_ctx, &ProviderHandoffSession::new(&ctx).unwrap(), &rejected_movement, &rejected_envelope, "file.write.result")
+        ).unwrap_err();
+        assert!(wrong_ledger.contains("handoff session belongs to interface"));
         assert_eq!(std::fs::read_to_string(&rejection_ctx.movements_path).unwrap(), journal);
         {
             let mut concurrent: serde_json::Value = serde_json::from_slice(&run_bytes).unwrap();

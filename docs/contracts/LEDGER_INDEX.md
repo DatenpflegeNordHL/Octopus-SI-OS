@@ -137,8 +137,10 @@ ledger. Selection includes transfers missing runtime metadata so they still fail
 validation. The indexed boundary is checked against the log; an unavailable or
 unusable index reads the authoritative prefix, and later rows are read from that
 boundary. Complete grants are materialized only for the writer's own call and
-result edges. Retained
-delivery keeps complete grants for required arrivals, preserving exact contract
+result edges. The provider handoff and its authoring-result consumer share
+one writer-history cache for the same interface and ledger. Result consumption
+validates that identity and checks the appended delta against the retained cursor.
+Retained delivery keeps complete grants for required arrivals, preserving exact contract
 comparisons during replacement. Other rows still validate their referenced grant
 content without copying unused authority into every historical movement.
 
