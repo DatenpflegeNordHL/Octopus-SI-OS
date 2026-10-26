@@ -3,6 +3,7 @@ const path = require("node:path");
 const { test, after } = require("node:test");
 const { build } = require("esbuild");
 const { JSDOM } = require("jsdom");
+const { decodeAudio } = require("../electron/clientDictation.cjs");
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://fixture.invalid", pretendToBeVisual: true });
 const w = dom.window;
@@ -145,4 +146,19 @@ test("cancelling a dictation stops the microphone and discards the recording whi
   await press("Stop dictation");
   await settle(750);
   assert.deepEqual(texts, ["Review the active run and continue with the next implementation step."]);
+});
+
+test("ten-minute dictation stops capture and its full WAV fits the transcription boundary", async () => {
+  await showComposer([]);
+  await press("Dictate");
+  await settle(260);
+  media.processors.at(-1).onaudioprocess({ inputBuffer: { getChannelData: () => new Float32Array(24_000 * 600 + 1) } });
+  assert.ok(media.tracks.at(-1).stopped && media.recorders.at(-1).state === "inactive");
+  const bytes = Buffer.alloc(44 + 24_000 * 600 * 2);
+  bytes.write("RIFF"); bytes.write("WAVE", 8);
+  const request = { bytes, durationMs: 600_000, mediaType: "audio/wav", sampleRateHz: 24_000, provider: "codex" };
+  assert.equal(decodeAudio(request).byteLength, bytes.length);
+  assert.throws(() => decodeAudio({ ...request, durationMs: 600_001 }), /10 minutes/);
+  assert.throws(() => decodeAudio({ ...request, bytes: Buffer.alloc(bytes.length + 1) }), /10 minutes/);
+  await settle(750);
 });

@@ -3,6 +3,7 @@ import type { OctopusClientAccessProfile } from "../../electron";
 import { transcribeDictation } from "../../projectionClient";
 import { applyDictationDictionary, useClientPreferences, useSetClientPreferences } from "../../clientPreferences";
 import { encodeVoiceRecording } from "./voiceRecorderEncoding";
+import dictationLimits from "../../../electron/clientDictationLimits.json";
 
 type DictationAction = "insert" | "send";
 type DictationError = "microphone-missing" | "permission-denied" | "unavailable" | "unsupported" | "transcription";
@@ -165,14 +166,14 @@ export function useLocalDictation({
       recorder.start();
       startedAtRef.current = performance.now();
       setIsDictating(true);
-      waveformRef.current = startWaveform(stream, waveformCanvasRef);
+      waveformRef.current = startWaveform(stream, waveformCanvasRef, () => stopDictation("insert"));
     } catch (failure) {
       stopCapture();
       stopRequestedRef.current = null;
       setIsDictating(false);
       onErrorRef.current(dictationErrorMessage(classifyStartError(failure)));
     }
-  }, [accessProfile, finishRecording, isDictating, isTranscribing, preferences.audioInputDeviceId, stopCapture]);
+  }, [accessProfile, finishRecording, isDictating, isTranscribing, preferences.audioInputDeviceId, stopCapture, stopDictation]);
 
   const retryDictation = useCallback(() => {
     if (isDictating || isTranscribing || !canRetryDictation || !retryRef.current) return;
@@ -220,11 +221,13 @@ async function simulatedDictation(attempt: RetryableDictation): Promise<string> 
 
 type WaveformCapture = { encode: () => ReturnType<typeof encodeVoiceRecording>; stop: () => void };
 
-function startWaveform(stream: MediaStream, canvasRef: RefObject<HTMLCanvasElement | null>): WaveformCapture {
+function startWaveform(stream: MediaStream, canvasRef: RefObject<HTMLCanvasElement | null>, onLimit: () => void): WaveformCapture {
   const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
   const processor = context.createScriptProcessor(2048, 1, 1);
   const recordingChunks: Float32Array[] = [];
+  const maxSamples = Math.floor(context.sampleRate * dictationLimits.maxDurationMs / 1_000);
+  let sampleCount = 0;
   let values: number[] = [];
   let canvasWidth = 0;
   let frame = 0;
@@ -314,8 +317,10 @@ function startWaveform(stream: MediaStream, canvasRef: RefObject<HTMLCanvasEleme
 
   frame = window.requestAnimationFrame(animate);
   processor.onaudioprocess = (event) => {
-    const input = event.inputBuffer.getChannelData(0);
+    if (stopped || sampleCount >= maxSamples) return;
+    const input = event.inputBuffer.getChannelData(0).subarray(0, maxSamples - sampleCount);
     recordingChunks.push(new Float32Array(input));
+    sampleCount += input.length;
     let squares = 0;
     for (let index = 0; index < input.length; index += 1) {
       const sample = input[index] ?? 0;
@@ -324,6 +329,7 @@ function startWaveform(stream: MediaStream, canvasRef: RefObject<HTMLCanvasEleme
     if (values.length === 0 && canvasRef.current?.clientWidth) resetForCanvas(canvasRef.current.clientWidth);
     summedLevel += Math.sqrt(squares / Math.max(1, input.length));
     levelCount += 1;
+    if (sampleCount === maxSamples) onLimit();
   };
   source.connect(processor);
   processor.connect(context.destination);

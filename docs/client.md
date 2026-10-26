@@ -62,6 +62,10 @@ There are two distinct audio features:
 - **Dictation** transcribes speech into the active composer. It prepares text
   locally in the client flow; transcription may call the configured provider.
   It does not submit an Octopus message until you send the text.
+  Each recording supports up to ten minutes and stops at that limit, returning
+  the transcription to the composer. If transcription fails, Retry dictation
+  reuses the recording while that composer remains open; audio is not saved
+  to disk.
 - **A voice call** connects the Home run through its declared voice interface.
   The controls include microphone mute, speaker output, device selection,
   transcript, and ending the call. Calls require a configured voice provider

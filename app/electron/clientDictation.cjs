@@ -2,11 +2,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const dictation = require("./clientDictationLimits.json");
 
 const CHATGPT_TRANSCRIPTION_URL = new URL("https://chatgpt.com/backend-api/transcribe");
-const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 44 + dictation.maxDurationMs / 1_000 * 24_000 * 2;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
-const MAX_DURATION_MS = 120_000;
 const AUTH_TIMEOUT_MS = 10_000;
 const AUTH_CACHE_MS = 60_000;
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
@@ -43,12 +43,12 @@ function decodeAudio(request) {
   if (request.mediaType !== "audio/wav" || request.sampleRateHz !== 24_000) {
     throw new Error("Dictation requires 24 kHz mono WAV audio.");
   }
-  if (!Number.isFinite(request.durationMs) || request.durationMs <= 0 || request.durationMs > MAX_DURATION_MS) {
-    throw new Error("Dictation recordings must be between 1 ms and 120 seconds.");
+  if (!Number.isFinite(request.durationMs) || request.durationMs <= 0 || request.durationMs > dictation.maxDurationMs) {
+    throw new Error("Dictation recordings can be up to 10 minutes long.");
   }
   const audio = toBuffer(request.bytes);
   if (!audio.length || audio.length > MAX_AUDIO_BYTES) {
-    throw new Error("Dictation audio must be non-empty and no larger than 10 MB.");
+    throw new Error("Dictation audio must be non-empty and fit within 10 minutes of 24 kHz mono WAV audio.");
   }
   if (audio.length < 44 || audio.toString("ascii", 0, 4) !== "RIFF" || audio.toString("ascii", 8, 12) !== "WAVE") {
     throw new Error("The recorded audio is not a valid WAV file.");
