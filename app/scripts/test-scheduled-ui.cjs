@@ -84,7 +84,12 @@ function rows(host) { return [...host.querySelectorAll('[data-scheduled-sidebar]
 function secondary(row) { return row.querySelector("[data-thread-secondary-title]").textContent; }
 function detail(host) { return host.querySelector("[data-scheduled-detail]"); }
 function dialog() { return document.querySelector('[role="dialog"] form[data-density="form"]'); }
-async function click(element) { assert.ok(element, "button exists"); await act(async () => element.click()); }
+async function click(element) {
+  assert.ok(element, "button exists");
+  await act(async () => element.click());
+  // Let a newly opened dialog take initial focus before the next user action.
+  await act(async () => new Promise((resolve) => window.requestAnimationFrame(resolve)));
+}
 async function input(element, value) {
   const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(prototype, "value").set;
