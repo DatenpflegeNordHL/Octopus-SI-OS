@@ -52,6 +52,13 @@ changes architectural responsibilities, contracts, or mechanisms. Read
 fits the whole system and why a simpler use of existing primitives is not enough.
 An ordinary fix that restores an existing contract does not need this section.
 
+For a new package, application, extension, or driver, complete **Use and need**:
+explain who benefits and why existing options are insufficient, and show your own
+practical use in Octopus. Include the setup, task, result, and anything untested;
+visual extensions also need a screenshot or short recording. A build or tool-list
+check alone is not enough. Niche or hard-to-test integrations receive individual
+maintainer review, and visual extensions require a visual review before acceptance.
+
 A working implementation is not the only consideration: we also assess whether
 the capability belongs in Octopus and whether its approach keeps the architecture
 coherent. A useful report can lead to a different fix rather than merging its PR.

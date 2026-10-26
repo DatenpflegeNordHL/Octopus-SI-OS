@@ -330,6 +330,7 @@ function composerPlugins(
       ],
     }),
     keymap({
+      "Shift-Enter": baseKeymap.Enter,
       "Mod-b": toggleMark(schema.marks.strong),
       "Mod-i": toggleMark(schema.marks.em),
       "Mod-z": undo,

@@ -8,6 +8,14 @@ Link the issue for a bug fix, or the discussion if there is one. -->
 <!-- What did you test, and what was the result? For a bug, include the failing
 case and the result after the fix. Say what you could not verify. -->
 
+## Use and need (new packages, applications, extensions, or drivers)
+
+<!-- Delete this section for other changes. For a new addition, explain who needs
+it and why existing options are not enough. Describe your own use inside Octopus:
+what you installed, a real task it completed, your setup, and what remains untested.
+Include a short, redacted result; for visual extensions, add a screenshot or recording.
+A build, mocked test, or tool listing alone does not establish practical use. -->
+
 ## Architecture fit (only when applicable)
 
 <!-- Delete this section for changes that preserve the existing architecture.
