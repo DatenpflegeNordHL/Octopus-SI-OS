@@ -71,7 +71,7 @@ function nativeFixture(env = {}) {
       }
       if (request.method === "account/login/start") result = { type: "chatgpt", loginId: `login-${children.length}`, authUrl: "https://example.test/login" };
       if (request.method === "account/login/cancel") result = { status: "canceled" };
-      if (request.method === "model/list") result = { data: [{ model: "model", displayName: "Model", defaultReasoningEffort: "high", supportedReasoningEfforts: [{ reasoningEffort: "high" }] }], nextCursor: null };
+      if (request.method === "model/list") result = { data: control.modelRows ?? [{ model: "model", displayName: "Model", defaultReasoningEffort: "high", supportedReasoningEfforts: [{ reasoningEffort: "high" }] }], nextCursor: null };
       if (request.method === "account/logout" && !control.refuseLogout) { persisted = child.cachedAccount = null; stamp += 1n; }
       const reply = () => child.stdout.emit("data", JSON.stringify({ id: request.id, ...(error ? { error } : { result }) }) + "\n");
       if (request.method === "account/read" && control.accountReply) control.accountReply(reply);
@@ -109,6 +109,24 @@ test("native account discovery owns its client identity and credential Home", as
     assert.equal(inherited.CODEX_INTERNAL_ORIGINATOR_OVERRIDE, "other-client");
     assert.equal(fixture.calls.find((call) => call.method === "initialize").params.clientInfo.name, env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE);
   } finally { fixture.client.dispose(); }
+});
+
+test("models without reasoning controls are normalized while malformed catalogues still fail closed", async () => {
+  const row = { model: "model", displayName: "Model", defaultReasoningEffort: "none", supportedReasoningEfforts: [] };
+  for (const rows of [[row], [{ ...row, defaultReasoningEffort: "high" }], [row, row],
+    [{ ...row, supportedReasoningEfforts: [{ reasoningEffort: "none" }, { reasoningEffort: "none" }] }]]) {
+    const fixture = nativeFixture();
+    fixture.control.modelRows = rows;
+    try {
+      if (rows.length === 1 && rows[0] === row) {
+        const [model] = await fixture.client.models();
+        assert.equal(model.defaultReasoningEffort, "");
+        assert.equal(model.supportedReasoningEfforts.length, 0);
+      } else {
+        await assert.rejects(fixture.client.models(), /invalid or repeated model/);
+      }
+    } finally { fixture.client.dispose(); }
+  }
 });
 
 test("simultaneous catalogue reads share discovery and account changes invalidate pending results", async () => {
