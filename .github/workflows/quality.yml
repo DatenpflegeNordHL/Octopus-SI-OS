@@ -203,6 +203,9 @@ jobs:
       - name: Registry and context artifact freshness
         run: cargo nextest run --locked -p octopus-app-server --lib -E 'test(context_artifact_cache::) | test(registry_fingerprint_tracks_same_size_) | test(registry_observation_)'
 
+      - name: Rejected verifier arrivals remain replayable
+        run: cargo test --locked -p octopus-app-server --lib arrival::tests::replay_recovers_only_the_exact_marked_checkpoint_generation -- --exact
+
       - name: MCP operations and optional reasoning model catalogues
         run: |
           cargo test --locked -p octopus-mcp-client --lib every_remote_mcp_operation_is_interface_local_and_strictly_loadable

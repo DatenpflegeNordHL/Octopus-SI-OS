@@ -1003,6 +1003,9 @@ pub fn interface_arrival_mark_proof_key(
         .invocation_metadata
         .as_ref()
         .and_then(MovementMetadata::invocation)?;
+    if invocation.verification_failure.is_some() {
+        return None;
+    }
     let runtime = invocation.runtime.as_ref()?;
     let admission = invocation.checkpoint_admission.as_ref()?;
     let required = invocation
