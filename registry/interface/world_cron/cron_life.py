@@ -2969,7 +2969,7 @@ def run_cron(schedule, reminder):
     while True:
         current = now(schedule)
         scheduled = next_cron_minute(compiled, current)
-        time.sleep(max(0.0, (scheduled - current).total_seconds()))
+        time.sleep(max(0.0, scheduled.timestamp() - current.timestamp()))
         moment = now(schedule)
         minute = moment.replace(second=0, microsecond=0)
         minute_key = minute.isoformat(timespec="minutes")
