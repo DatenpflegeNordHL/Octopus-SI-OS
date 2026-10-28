@@ -243,7 +243,9 @@ impl TaskRetirementContext {
 #[derive(Default)]
 struct RetirementLedgerCache {
     boundary: Option<RetirementLedgerBoundary>,
-    grant_rows: BTreeMap<octopus_ledger::ContentHash, (usize, Vec<u8>)>,
+    prefix: Vec<u8>,
+    hasher: Sha256,
+    grant_lines: BTreeMap<octopus_ledger::ContentHash, usize>,
 }
 
 fn ledger_boundary(
@@ -256,14 +258,25 @@ fn ledger_boundary(
     if !bytes.is_empty() && !bytes.ends_with(b"\n") {
         return Err("retirement ledger has an incomplete tail".into());
     }
+    let reuse = match (&cache.boundary, prior) {
+        (None, _) => false,
+        (Some(checked), Some(prior)) if checked == prior => true,
+        _ => return Err("retirement ledger cache differs from its held proof".into()),
+    };
+    let mut hasher = if reuse { cache.hasher.clone() } else { Sha256::new() };
     let prior_offset = match prior {
         Some(prior) => {
             let offset = usize::try_from(prior.complete_offset)
                 .map_err(|_| "retirement prefix exceeds host range")?;
-            if offset > bytes.len()
-                || digest(&bytes[..offset]) != prior.sha256
-                || offset > 0 && bytes[offset - 1] != b'\n'
-            {
+            let unchanged = offset <= bytes.len()
+                && (offset == 0 || bytes[offset - 1] == b'\n')
+                && if reuse {
+                    bytes[..offset] == cache.prefix[..]
+                } else {
+                    hasher.update(&bytes[..offset]);
+                    format!("{:x}", hasher.clone().finalize()) == prior.sha256
+                };
+            if !unchanged {
                 return Err("retirement ledger prefix changed after the held proof".into());
             }
             offset
@@ -282,14 +295,9 @@ fn ledger_boundary(
         .map(|record| &record.run)
         .collect::<BTreeSet<_>>();
     let decoder = octopus_ledger_store::DurableMovementDecoder::for_log(&path);
-    let reuse = match (&cache.boundary, prior) {
-        (None, _) => false,
-        (Some(checked), Some(prior)) if checked == prior => true,
-        _ => return Err("retirement ledger cache differs from its held proof".into()),
-    };
     if reuse {
-        for (line, row) in cache.grant_rows.values() {
-            decoder.decode_projection(row, *line).map_err(|error| error.to_string())?;
+        for (grant, line) in &cache.grant_lines {
+            decoder.validate_grant(*grant, *line).map_err(|error| error.to_string())?;
         }
     }
     let mut sequence = if reuse { prior.unwrap().sequence } else { 0 };
@@ -299,11 +307,11 @@ fn ledger_boundary(
             .decode_projection(line, sequence as usize)
             .map_err(|error| error.to_string())?;
         if let Some(grant) = grant {
-            if !cache.grant_rows.contains_key(&grant)
+            if !cache.grant_lines.contains_key(&grant)
                 && serde_json::from_slice::<Value>(line).map_err(|error| error.to_string())?
                     .pointer("/invocation_metadata/grant_content").is_some()
             {
-                cache.grant_rows.insert(grant, (sequence as usize, line.to_vec()));
+                cache.grant_lines.insert(grant, sequence as usize);
             }
         }
         if movement.seq.0 != sequence {
@@ -332,13 +340,15 @@ fn ledger_boundary(
     if offset == prior_offset && prior.is_some_and(|prior| prior.sequence != sequence) {
         return Err("retirement ledger ends at a different sequence boundary".into());
     }
+    hasher.update(&bytes[prior_offset..]);
     let boundary = RetirementLedgerBoundary {
         complete_offset: bytes.len() as u64,
         sequence,
-        sha256: prior.filter(|_| prior_offset == bytes.len()).map(|prior| prior.sha256.clone())
-            .unwrap_or_else(|| digest(&bytes)),
+        sha256: format!("{:x}", hasher.clone().finalize()),
     };
     cache.boundary = Some(boundary.clone());
+    cache.prefix = bytes;
+    cache.hasher = hasher;
     Ok(boundary)
 }
 
