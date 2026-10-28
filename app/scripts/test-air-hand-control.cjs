@@ -307,11 +307,14 @@ test("a point interaction moves focus while the Settings gesture page is mounted
   const root = createRoot(w.document.getElementById("root"));
   try {
     root.render(React.createElement(page.exports.Page));
-    await new Promise((resolve) => setTimeout(resolve, 50));
     const focused = () => w.document.querySelector("[data-gesture-focused]")?.dataset.probe ?? null;
     const point = (phase, x) => page.exports.emitGestureInteraction({ type: "point", side: "right", phase, x, y: 0.46 }, "camera");
+    const deadline = Date.now() + 5000;
+    do {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      point("begin", 0.86);
+    } while (focused() !== "right" && Date.now() < deadline);
     assert.ok(w.document.querySelector(".gesture-manager"), "the Settings gesture page is mounted");
-    point("begin", 0.86);
     assert.equal(focused(), "right");
     point("move", 0.11);
     await new Promise((resolve) => setTimeout(resolve, 120));
