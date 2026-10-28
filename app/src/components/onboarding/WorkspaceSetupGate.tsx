@@ -41,6 +41,7 @@ import { OcButton } from "../../design-system/components";
 import { OctopusLoadingLogo, OctopusLoadingState } from "../OctopusLoadingLogo";
 import {
   WorkspaceSetupOverlay,
+  WorkspaceSetupProgress,
   createDefaultWorkspaceSetupDraft,
   type WorkspaceSetupApplyState,
   type WorkspaceSetupCatalogCapability,
@@ -185,11 +186,12 @@ function WorkspaceHomeGate({ runtimeHome, children }: Pick<Props, "runtimeHome" 
   useChatgptAccount(false, runtimeHome);
   const structureGeneration = useProjectionStructureGeneration();
   const [snapshot, setSnapshot] = useState<GateSnapshot | null>(null);
+  const [setup, setSetup] = useState<OctopusClientSetupState | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let active = true;
-    void readGateSnapshot(false).then((next) => {
+    void readGateSnapshot(false, (current) => { if (active) setSetup(current); }).then((next) => {
       if (!active) return;
       setSnapshot(next);
       setError("");
@@ -202,23 +204,25 @@ function WorkspaceHomeGate({ runtimeHome, children }: Pick<Props, "runtimeHome" 
   }, [structureGeneration, retry]);
   if (error) return <GateState title="Workspace could not be checked" detail={error} tone="danger"
     action={<OcButton onClick={() => setRetry((value) => value + 1)}>Try again</OcButton>} />;
-  if (!snapshot) return <OpeningState />;
+  if (!snapshot) return setup?.status === "in_progress"
+    ? <WorkspaceSetupProgress applyState={savedSetupProgress(setup)} />
+    : <OpeningState />;
   if (snapshot.clientSetup?.status === "complete") {
     const matrix = completedSetupMatrix(snapshot, null);
     if (matrix.mode === "shell") return <>{children}</>;
     return <GateState title={matrix.title} detail={matrix.detail} tone="danger"
       action={<OcButton onClick={() => setRetry((value) => value + 1)}>Check again</OcButton>} />;
   }
-  return <WorkspaceAccountSetupGate runtimeHome={runtimeHome}>{children}</WorkspaceAccountSetupGate>;
+  return <WorkspaceAccountSetupGate runtimeHome={runtimeHome} setup={snapshot.clientSetup}>{children}</WorkspaceAccountSetupGate>;
 }
 
-function WorkspaceAccountSetupGate({ runtimeHome, children }: Pick<Props, "runtimeHome" | "children">) {
+function WorkspaceAccountSetupGate({ runtimeHome, children, setup }: Pick<Props, "runtimeHome" | "children"> & { setup: OctopusClientSetupState | null }) {
   const account = useChatgptAccount();
-  if (!account.account?.signedIn || account.account.octopusHome !== runtimeHome) return <ChatGptSignInGate />;
-  return <WorkspaceSetupFlow accessProfile="live">{children}</WorkspaceSetupFlow>;
+  if (setup?.status !== "in_progress" && (!account.account?.signedIn || account.account.octopusHome !== runtimeHome)) return <ChatGptSignInGate />;
+  return <WorkspaceSetupFlow accessProfile="live" initialSetup={setup}>{children}</WorkspaceSetupFlow>;
 }
 
-function WorkspaceSetupFlow({ accessProfile, children }: Omit<Props, "runtimeHome">) {
+function WorkspaceSetupFlow({ accessProfile, children, initialSetup }: Omit<Props, "runtimeHome"> & { initialSetup: OctopusClientSetupState | null }) {
   const extensions = useClientExtensions(accessProfile);
   const structureGeneration = useProjectionStructureGeneration();
   const [snapshot, setSnapshot] = useState<GateSnapshot | null>(null);
@@ -228,7 +232,7 @@ function WorkspaceSetupFlow({ accessProfile, children }: Omit<Props, "runtimeHom
   const [applyState, setApplyState] = useState<WorkspaceSetupApplyState>(APPLY_IDLE);
   const refreshSequence = useRef(0);
   const inFlight = useRef<Promise<void> | null>(null);
-  const activeOperationId = useRef("");
+  const activeOperationId = useRef(initialSetup?.operationId ?? "");
   const extensionsRef = useRef(extensions);
   extensionsRef.current = extensions;
 
@@ -368,13 +372,11 @@ function WorkspaceSetupFlow({ accessProfile, children }: Omit<Props, "runtimeHom
     allowSignIn = false,
   ): Promise<void> => {
     if (inFlight.current) return inFlight.current;
-    setApplyState({
-      state: "running",
-      label: allowSignIn ? "Connecting ChatGPT" : "Resuming setup",
-      detail: allowSignIn ? "Finish signing in in your browser. Octopus will continue once your account is verified." : "Octopus is continuing from the last verified step on this device.",
-      percent: 0,
-      error: "",
-    });
+    setApplyState(allowSignIn ? {
+      ...savedSetupProgress(setup),
+      label: "Connecting ChatGPT",
+      detail: "Finish signing in in your browser. Octopus will continue once your account is verified.",
+    } : savedSetupProgress(setup));
     activeOperationId.current = setup.operationId;
     const operation = Promise.resolve().then(async () => {
       const currentDraft = readDraftForHostResume(trustedDraft);
@@ -476,10 +478,11 @@ function WorkspaceSetupFlow({ accessProfile, children }: Omit<Props, "runtimeHom
       && applyState.state === "idle"
       && !snapshotError
       && matrix?.mode === "resume"
+      && (!draftState.draft || !extensions.loading && Boolean(catalogResult.pack))
     ) {
       void resumeCurrent(snapshot.clientSetup);
     }
-  }, [accessProfile, applyState.state, matrix?.mode, resumeCurrent, snapshot, snapshotError]);
+  }, [accessProfile, applyState.state, matrix?.mode, resumeCurrent, snapshot, snapshotError, draftState.draft, extensions.loading, catalogResult.pack]);
 
   useEffect(() => {
     if (
@@ -523,7 +526,9 @@ function WorkspaceSetupFlow({ accessProfile, children }: Omit<Props, "runtimeHom
   }
 
   if (loading || !snapshot) {
-    return <OpeningState />;
+    return initialSetup?.status === "in_progress"
+      ? <WorkspaceSetupProgress applyState={applyState.state === "idle" ? savedSetupProgress(initialSetup) : applyState} />
+      : <OpeningState />;
   }
 
   if (!matrix) return <OpeningState />;
@@ -558,7 +563,7 @@ function WorkspaceSetupFlow({ accessProfile, children }: Omit<Props, "runtimeHom
   const draft = draftState.draft ?? createDefaultWorkspaceSetupDraft();
   return (
     <WorkspaceSetupOverlay
-      applyState={applyState}
+      applyState={applyState.state === "idle" && snapshot.clientSetup?.status === "in_progress" ? savedSetupProgress(snapshot.clientSetup) : applyState}
       catalog={catalogResult.catalog}
       catalogError={catalogResult.error || catalogResult.warning}
       catalogLoading={extensions.loading}
@@ -834,8 +839,6 @@ function resolveGateMatrix(
   catalogResult: CatalogResult,
   extensions: ClientExtensionRegistryState,
 ): GateMatrix {
-  const failure = workspaceFailure(snapshot);
-  if (failure) return failure;
   const setup = snapshot.clientSetup;
   if (setup?.status === "in_progress") {
     if (draft && draft.operationId !== setup.operationId) {
@@ -859,6 +862,8 @@ function resolveGateMatrix(
     }
     return { mode: "resume", title: "Finishing setup", detail: "Octopus is continuing from the last verified step." };
   }
+  const failure = workspaceFailure(snapshot);
+  if (failure) return failure;
   if (setup?.status === "complete") return completedSetupMatrix(snapshot, draft);
   if (snapshot.workspace.status === "configured") {
     const receipt = snapshot.workspace.receipt;
@@ -1266,6 +1271,19 @@ function capabilityKind(kind: PackComponent["productKind"]): WorkspaceSetupCapab
   return kind;
 }
 
+function savedSetupProgress(setup: OctopusClientSetupState): WorkspaceSetupApplyState {
+  const pending = setup.steps.findIndex((step) => step.state === "pending");
+  const index = pending < 0 ? setup.steps.length : pending;
+  const step = setup.steps[index]?.step;
+  return {
+    state: "running",
+    label: step ? clientSetupProgressLabel(step, "verifying") : "Verifying setup",
+    detail: step ? clientSetupProgressDetail(step) : "Checking the completed steps before opening Home.",
+    percent: Math.round(index * 90 / setup.steps.length),
+    error: "",
+  };
+}
+
 function clientSetupProgressLabel(
   step: OctopusClientSetupProgress["step"],
   phase: OctopusClientSetupProgress["phase"],
@@ -1357,11 +1375,12 @@ function resetApplyingDraft(
   setApplyState(APPLY_IDLE);
 }
 
-async function readGateSnapshot(includeCatalog = true): Promise<GateSnapshot> {
-  const [workspaceRaw, scopeRaw, clientSetup] = await Promise.all([
+async function readGateSnapshot(includeCatalog = true, onSetup?: (setup: OctopusClientSetupState | null) => void): Promise<GateSnapshot> {
+  const clientSetup = await readCurrentClientSetup();
+  onSetup?.(clientSetup);
+  const [workspaceRaw, scopeRaw] = await Promise.all([
     readWorkspaceSetupState(),
     readProjection("projection.operator.os.scope"),
-    readCurrentClientSetup(),
   ]);
   const localPackages = includeCatalog && clientSetup?.status !== "complete"
     ? parseLocalPackagesProjection(await readProjection("projection.operator.os.local_packages"))

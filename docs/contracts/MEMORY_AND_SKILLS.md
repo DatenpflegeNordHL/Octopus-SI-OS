@@ -3,8 +3,12 @@
 Memory, skills, and persona are artifacts bound to runs. Updating one is an
 ordinary run under policy.
 
-The shared worker-role artifact identifies Octopus as the persistent system and
-a run as one part of its work. Home and Task role artifacts specialize that
+The shared worker-role artifact identifies the installed system with the agent:
+its goals, runs, interfaces, triggers, worker environments and their
+connections are Octopus, and a run is one part of its work. It invites runs to
+organize their work through those primitives and to reshape the environment
+when a change is likely to improve current or later work. Home and Task role
+artifacts specialize that
 role; provider choice does not change the identity. This guidance is bound
 context, not additional authority or evidence of work elsewhere. The realtime
 provider's session instructions present the same identity through voice.

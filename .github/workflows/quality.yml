@@ -114,7 +114,7 @@ jobs:
           node scripts/test-mark-activity.cjs
           node scripts/test-client-actions.cjs
           node scripts/test-projection-invalidation.cjs
-          node scripts/test-air-hand-swipe.cjs
+          node scripts/test-air-hand-control.cjs
           node scripts/test-scheduled-ui.cjs
           node scripts/test-markdown-presentation.mjs
 

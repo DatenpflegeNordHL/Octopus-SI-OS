@@ -402,7 +402,6 @@ test("Home sequences reply fade before the call scene and preserves drafts, repl
     "../CadencedShimmerText": { CadencedShimmerText: ({ children, active }) => React.createElement("span", { "data-active": active }, children), ShimmerActivityScope: ({ children }) => children },
     "../chat/ChatComposer": { ChatComposer: composer },
     "../chat/QueuedMessageList": { QueuedMessageList: () => null },
-    "./AirHandVoiceController": { AirHandVoiceController: () => null },
     "./VoiceOrbScene": { VoiceOrbScene: props => { orbProps = props; return null; } },
     "./voiceWidgetDocuments": { buildVoiceWidgetDocuments: () => [] },
     "../chat/chatProductError": { chatProductError: () => "" },

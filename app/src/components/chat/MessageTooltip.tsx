@@ -167,7 +167,7 @@ export function MessageTooltip({ children, asChild = false, className, delayMs, 
     const update = () => {
       const measured = measureAnchor();
       setAnchor((current) => {
-        if (!measured || !current) return measured;
+        if (!measured || !current) return null;
         const geometryChanged = Math.abs(measured.triggerBottom - current.triggerBottom) >= 0.5
           || Math.abs(measured.triggerTop - current.triggerTop) >= 0.5
           || Math.abs(measured.triggerX - current.triggerX) >= 0.5

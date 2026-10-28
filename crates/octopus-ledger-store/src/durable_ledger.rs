@@ -247,7 +247,7 @@ impl DurableMovementDecoder {
         Ok(bytes)
     }
 
-    fn validate_grant(&self, hash: ContentHash, line: usize) -> LedgerResult<Vec<String>> {
+    pub fn validate_grant(&self, hash: ContentHash, line: usize) -> LedgerResult<Vec<String>> {
         let fingerprint = self.grant_fingerprint(hash)?;
         let validated = self
             .caches

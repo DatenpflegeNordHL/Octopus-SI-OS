@@ -239,6 +239,12 @@ contextBridge.exposeInMainWorld("octopusTransport", {
   cameraAccessStatus() {
     return invokeAccess("octopus:camera-access-status");
   },
+  saveGestureTrace(text) {
+    return invokeAccess("octopus:gesture-trace-save", text);
+  },
+  revealGestureTrace(target) {
+    return invokeAccess("octopus:gesture-trace-reveal", target);
+  },
   clientWindowBootstrap() {
     return ipcRenderer.sendSync("octopus:client-window-bootstrap");
   },

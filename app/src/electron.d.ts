@@ -92,6 +92,8 @@ declare global {
       requestMicrophoneAccess(): Promise<OctopusMicrophoneAccess>;
       requestCameraAccess(): Promise<OctopusCameraAccess>;
       cameraAccessStatus(): Promise<OctopusCameraAccess>;
+      saveGestureTrace(text: string): Promise<OctopusGestureTraceSaved>;
+      revealGestureTrace(path: string): Promise<{ revealed: boolean; path: string }>;
       clientWindowBootstrap(): ClientWindowBootstrap | null;
       openClientWindow(request?: ClientWindowOpenRequest): Promise<ClientWindowOpenOutcome>;
       clientWindowReady(request: ClientWindowReadyRequest): Promise<ClientWindowOpenOutcome>;
@@ -1187,6 +1189,12 @@ export type OctopusMicrophoneAccess = {
 export type OctopusCameraAccess = {
   granted: boolean;
   status: string;
+};
+
+export type OctopusGestureTraceSaved = {
+  path: string;
+  filename: string;
+  bytes: number;
 };
 
 export type OctopusTransportDefaults = {

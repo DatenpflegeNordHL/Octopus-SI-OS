@@ -471,6 +471,63 @@ test("sign-in copy completion belongs to the current URL and mounted attempt", a
   }
 });
 
+test("reopened setup displays committed progress before workspace discovery and follows the running operation", async () => {
+  const dom = new (require("jsdom").JSDOM)('<div id="root"></div>', { url: "https://client.test" });
+  const previous = new Map();
+  for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, navigator: dom.window.navigator, IS_REACT_ACT_ENVIRONMENT: true })) {
+    previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  const setup = { status: "in_progress", operationId: "setup_progress_001", steps: ["packages", "extensions", "workspace", "provider"].map((step, i) => ({ step, state: i < 2 ? "complete" : "pending" })) };
+  let releaseWorkspace, notify, resumeCalls = 0;
+  let workspace = new Promise(resolve => { releaseWorkspace = resolve; });
+  const progressView = ({ applyState }) => React.createElement("div", { "data-progress": applyState.percent }, applyState.label);
+  const { WorkspaceSetupGate } = loadTs("components/onboarding/WorkspaceSetupGate.tsx", {
+    "../../account/useChatgptAccount": { useChatgptAccount: () => ({ account: null, loading: true }) },
+    "./ChatGptSignInGate": { ChatGptSignInGate: () => "Sign in" },
+    "../chat/chatWorkspaceCapabilities": {}, "../../onboarding/chatgptSignIn": { chatgptSignInCompleted: () => false },
+    "../../extensions/useClientExtensions": { useClientExtensions: () => ({ loading: true, extensions: [], errors: [] }) },
+    "../../onboarding/workspaceSetup": { readWorkspaceSetupDraft: () => null },
+    "../../projectionClient": {
+      readCurrentClientSetup: async () => setup,
+      readWorkspaceSetupState: () => workspace,
+      readProjection: async method => method.endsWith("local_packages") ? { packs: [], packages: [], errors: [] }
+        : { status: "unbound", root_ee_id: "", home_run_id: "", home_interface_id: "", root_environment: null, projects: [], errors: [] },
+      onClientSetupProgress: listener => { notify = listener; return () => { notify = null; }; },
+      resumeClientSetup: () => { resumeCalls++; return new Promise(() => {}); },
+    },
+    "../../projectionLive": { useProjectionStructureGeneration: () => 0 }, "../../design-system/components": ui,
+    "../OctopusLoadingLogo": { OctopusLoadingState: () => "Opening Octopus", OctopusLoadingLogo: () => null },
+    "./WorkspaceSetupOverlay": { WorkspaceSetupProgress: progressView, WorkspaceSetupOverlay: progressView, createDefaultWorkspaceSetupDraft: () => ({}) },
+  });
+  const root = require("react-dom/client").createRoot(document.getElementById("root"));
+  const act = callback => React.act(async () => { await callback(); await tick(); });
+  const show = () => act(() => root.render(React.createElement(WorkspaceSetupGate, { accessProfile: "live", runtimeHome: "/home" }, "Shell")));
+  try {
+    await show();
+    assert.equal(document.querySelector("[data-progress]").dataset.progress, "45");
+    assert.match(document.body.textContent, /Checking Home and projects/);
+    assert.doesNotMatch(document.body.textContent, /Opening Octopus|Sign in|Shell/);
+    workspace = { status: "not_configured", errors: [], receipt: null };
+    await act(() => releaseWorkspace(workspace));
+    assert.equal(resumeCalls, 1);
+    assert.match(document.body.textContent, /Checking Home and projects/);
+    await act(() => notify({ operationId: setup.operationId, step: "provider", phase: "verifying", percent: 68 }));
+    assert.match(document.body.textContent, /Checking provider sign-in/);
+    await act(() => notify({ operationId: "other_operation", step: "packages", phase: "applying", percent: 0 }));
+    assert.match(document.body.textContent, /Checking provider sign-in/);
+    await act(() => root.render(null));
+    setup.steps[2].state = "complete";
+    workspace = new Promise(() => {});
+    await show();
+    assert.equal(document.querySelector("[data-progress]").dataset.progress, "68");
+    assert.match(document.body.textContent, /Checking provider sign-in/);
+  } finally {
+    await act(() => root.unmount()); dom.window.close();
+    for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
+  }
+});
+
 test("account menu prefers top placement and retains viewport collision handling", () => {
   let account = { ...signedIn, planType: "promax" };
   const { AccountRailButton } = loadTs("components/shell/AccountRailButton.tsx", {

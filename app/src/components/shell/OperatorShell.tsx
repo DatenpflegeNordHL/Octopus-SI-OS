@@ -121,6 +121,7 @@ import { clientDialogOwnsCommands, formatKeyboardShortcut, keyboardCommandConfli
 import { subscribeAirHandGestures, useGestureShortcutPreferences } from "../../gestureShortcuts";
 import { useCustomGestureDispatch } from "../../customGestures";
 import { useGestureFocus } from "../../gestureFocus";
+import { GestureFocusRing } from "../gestures/GestureFocusRing";
 import { startGestureRecognition, stopGestureRecognition } from "../../gestureRecognition";
 import type { RuntimeHostView } from "../../runtimeHost";
 import type { ClientSurfaceActionEvent } from "../../client-surfaces/types";
@@ -400,7 +401,7 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
   const activeNavigation = surfaceNavigation;
   const activeDestination = activeNavigation.entries[activeNavigation.index] ?? clientDestination("voice");
   const settingsOpen = Boolean(activeDestination.settingsSection);
-  useGestureFocus(gesturePreferences.enabled && !settingsOpen);
+  useGestureFocus(accessProfile, gesturePreferences.enabled, gesturePreferences.spatialControl);
   useCustomGestureDispatch(accessProfile, gesturePreferences.enabled && !settingsOpen);
   const activeSurfaceId = activeDestination.surfaceId;
   const shortcutNavigationDestinations = useMemo(() => clientNavigationDestinations.filter((destination) => (
@@ -1000,10 +1001,6 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
   );
 
   const openLauncherTab = useCallback(() => {
-    if (!activeClientSurfaceIdentity.ready) {
-      appToast.warning("Wait for the selected task before opening a new tab.");
-      return;
-    }
     const target = activeClientSurfaceIdentity.pane === "secondary" ? activeSecondaryTab?.target : undefined;
     const source = target?.kind === "launcher" ? target.source
       : target?.kind === "terminal" ? { kind: "terminal" as const, cwd: target.cwd }
@@ -1199,6 +1196,13 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
     if (role === "home") openHomeRun(runId);
     else openChat(runId);
   }, [openChat, openHomeRun]);
+
+  const openSecondarySurfaceRun = useCallback((runId: string, role: "home" | "task") => {
+    if (role === "home") {
+      homeChatWorkspace.selectRun(runId);
+      openSecondaryTab(secondaryPaneTab("octopus-os", "voice", ""));
+    } else openSecondaryChatTab(runId);
+  }, [homeChatWorkspace, openSecondaryChatTab, openSecondaryTab]);
 
   const openNavigationSection = useCallback((section: ClientNavigationSection) => {
     setSecondaryPaneFocused(false);
@@ -2059,12 +2063,10 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
   useEffect(() => subscribeAirHandGestures((gesture, source) => {
     if (!gesturePreferences.enabled || settingsOpen) return;
     if (accessProfile === "live" && source === "test") return;
-    if (gesture === "left_click" && gesturePreferences.spatialControl && activeSurface?.id === "voice") return;
-    if (gesture === "fist" && document.querySelector("[data-airhand-target='drag']")) return;
     if (clientDialogOwnsCommands()) return;
     const command = gesturePreferences.mappings[gesture];
     if (command !== "none") dispatchClientCommand(command, "gesture");
-  }), [accessProfile, activeSurface?.id, gesturePreferences, settingsOpen]);
+  }), [accessProfile, gesturePreferences, settingsOpen]);
 
   useEffect(() => {
     if (!gesturePreferences.enabled) {
@@ -2324,7 +2326,7 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
     installedVoiceWidgetsReady={surfaceRegistry.extensions.hydrated}
     builtinVoiceWidgetSources={surfaceRegistry.extensions.builtinWidgetSources}
     workerEnvironmentSurfaces={surfaceRegistry.workerEnvironmentSurfaces}
-    onOpenRun={openSurfaceRun}
+    onOpenRun={openSecondarySurfaceRun}
           />
   ) : null;
   const secondaryPane = secondarySurface || secondaryPaneOpen ? (
@@ -2598,6 +2600,7 @@ export function OperatorShell({ accessProfile, clientWindow, onLogOut, runtimeHo
       {accessProfile === "live" ? (
         <BuiltinClientExtensionActionHost actions={surfaceRegistry.extensions.installedActions} />
       ) : null}
+      <GestureFocusRing />
     </ScheduledWorkspaceProvider>
   );
 }

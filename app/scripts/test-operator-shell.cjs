@@ -356,6 +356,32 @@ test("a pane shows a task only while its workspace holds that exact run", { time
   assert.deepEqual(host.called("beginClientPaneTransfer"), []);
 });
 
+test("right-pane navigation opens the current task without changing the left pane, including from Triggers", { timeout: 20_000 }, async () => {
+  await mount(fakeHost());
+  await openTask("run-1");
+  await command("toggle_split");
+  await until(() => button("Side task", pane("secondary")), "the launcher did not offer the current task");
+  button("Side task", pane("secondary")).click();
+  await until(() => stubIn("secondary", "chat")?.dataset.run === "run-1", "the current left task could not open on the right");
+  assert.equal(stubIn("primary", "chat").dataset.run, "run-1");
+
+  button("New tab").click(); await settle();
+  pane("secondary").querySelector('.workspace-pane-launcher-item[aria-haspopup="menu"]').click(); await settle();
+  document.querySelector('[data-action-id="surface:octopus-os:scheduled"]').click();
+  await until(() => stubIn("secondary", "scheduled"), "Triggers did not open on the right");
+  assert.equal(typeof stubIn("secondary", "scheduled").props.onSelectChat, "function");
+  stubIn("secondary", "scheduled").props.onSelectChat("run-1");
+  await until(() => stubIn("secondary", "chat")?.dataset.run === "run-1", "the trigger's existing task did not open on the right");
+  assert.equal(stubIn("primary", "chat").dataset.run, "run-1");
+  assert.deepEqual(secondaryTabs().map(tab => tab.textContent), ["Task run-1", "Triggers"]);
+
+  stubIn("primary", "chat").props.workspace.selectRun("run-2");
+  await until(() => !stubIn("primary", "chat"), "the primary task did not enter its loading state");
+  pointer(pane("primary"), "pointerdown"); await settle();
+  button("New tab").click();
+  await until(() => pane("secondary").querySelector(".workspace-pane-launcher"), "the left task's loading state blocked opening a right tab");
+});
+
 test("a new side task tab becomes the run its first message creates", { timeout: 20_000 }, async () => {
   const host = await mount(fakeHost());
   await openTask("run-1");

@@ -527,6 +527,77 @@ struct CompletedInputReplayFixture {
     input_file: InterfaceArtifactFile,
 }
 
+#[test]
+fn historical_role_binding_is_static_only_with_its_admitted_grant() {
+    let mut fixture = CompletedInputReplayFixture::new();
+    let role_file = InterfaceArtifactFile::write(fixture.handoff.var_dir.join("role"), "context.role",
+        br#"{"label":"context.role","text":"Reviewer instructions"}"#).unwrap();
+    let role = artifact_identity(&role_file, &fixture.handoff.var_dir).unwrap().artifact;
+    std::fs::write(fixture.handoff.ctx.blobs_dir.join(role.content.to_hex()), std::fs::read(role_file.manifest_path()).unwrap()).unwrap();
+    std::fs::write(fixture.handoff.ctx.blobs_dir.join(role_file.read_manifest().unwrap().payload_content_hash.unwrap()), role_file.read_payload_bytes().unwrap()).unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&std::fs::read(&fixture.handoff.run_path).unwrap()).unwrap();
+    value["checkpoints"].as_array_mut().unwrap().iter_mut().find(|cp| cp["id"] == "input").unwrap()["artifact_bindings"] =
+        serde_json::json!([{ "id": role.id, "access": { "read": true, "create": false, "change": false, "delete": false } }]);
+    let bytes = serde_json::to_vec(&value).unwrap();
+    let record = RunRecord::from_bytes(&bytes).unwrap();
+    fixture.rows.clear();
+    fixture.edge(&bytes, &"input".into(), &fixture.input_file.clone(), "provider".into(), MovementKind::InterfaceOutbound);
+    let mut metadata = fixture.rows[0].invocation_metadata.as_ref().unwrap().invocation().unwrap().clone();
+    metadata.grant.role_artifacts = vec![role.id.to_string()];
+    fixture.rows[0].invocation_metadata = Some(metadata.clone().into());
+    fixture.save();
+    let recover = |fixture: &CompletedInputReplayFixture| {
+        recover_source_session_context_from_cache(&fixture.handoff.ctx.blobs_dir,
+            fixture.handoff.ctx.required_host_io_limits().unwrap(),
+            &ProviderHandoffSession::new(&fixture.handoff.ctx).unwrap(), &record, &fixture.handoff.config, 0,
+            &fixture.handoff.context_output_labels, &fixture.handoff.session_snapshot_labels)
+    };
+    let (history, _, statics) = recover(&fixture).unwrap();
+    assert_eq!(statics, vec![role.id.clone()]);
+    assert_eq!(history.artifacts.len(), 1);
+    assert_eq!(history.artifacts[0].source_artifact, fixture.input);
+    metadata.grant.role_artifacts.clear();
+    fixture.rows[0].invocation_metadata = Some(metadata.into());
+    fixture.save();
+    assert!(recover(&fixture).err().unwrap().contains("no eligible movement"));
+}
+
+#[test]
+#[ignore = "requires explicitly selected read-only source context evidence"]
+fn selected_home_source_context_preserves_admitted_roles_and_input() {
+    let home = PathBuf::from(std::env::var("OCTOPUS_REPLAY_HOME").unwrap());
+    let provider = InterfaceId::new(std::env::var("OCTOPUS_REPLAY_PROVIDER").unwrap());
+    let run = RunId::new(std::env::var("OCTOPUS_REPLAY_RUN").unwrap());
+    let dir = home.join("registry/interface").join(provider.as_str());
+    let descriptor: InterfaceDescriptor = serde_json::from_slice(&std::fs::read(dir.join("interface.json")).unwrap()).unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    let (sender, receiver) = tokio::sync::mpsc::channel(1); drop(receiver);
+    let ctx = InterfaceLiftContext::unprivileged(provider.clone(), dir, Some(descriptor.clone()), scratch.path().join("var"),
+        home.join("ledger/movements.jsonl"), home.join("ledger/blobs"), scratch.path().join("index.sqlite"),
+        BTreeMap::new(), sender, Default::default()).with_host_io_limits(InterfaceHostIoLimits {
+            max_control_frame_bytes:1_048_576, max_stderr_bytes:262_144,
+            max_manifest_bytes:1_048_576, max_payload_bytes:268_435_456,
+        }).unwrap();
+    let path = home.join("state/runs").join(format!("{run}.json"));
+    let current = std::fs::read(&path).unwrap();
+    let record = RunRecord::from_bytes(&current).unwrap();
+    let config = config_from_persisted_profile(&record, &provider, &run_authoring_profile(&descriptor).unwrap()).unwrap();
+    let (outputs, snapshots) = provider_context_label_sets(&descriptor).unwrap();
+    let session = ProviderHandoffSession::new(&ctx).unwrap();
+    for source in std::env::var("OCTOPUS_REPLAY_SOURCE").unwrap().split(',').map(|value| value.parse::<u64>().unwrap()) {
+        let (_, admitted) = session.index().unwrap().exact_provider_source_outbound(&run, &record.worker, &provider, source).unwrap();
+        assert!(!admitted.role_artifacts.is_empty());
+        let (history, _, statics) = recover_source_session_context_from_cache(&ctx.blobs_dir, ctx.required_host_io_limits().unwrap(),
+            &session, &record, &config, source, &outputs, &snapshots).unwrap();
+        assert!(admitted.role_artifacts.iter().all(|id| statics.contains(&ArtifactId::new(id))));
+        assert!(history.artifacts.iter().all(|entry| !admitted.role_artifacts.contains(&entry.source_artifact.id.to_string())));
+        assert_eq!(history.artifacts.last().unwrap().source_artifact, admitted.artifact);
+        assert_eq!(history.artifacts.last().unwrap().source_movement_seq, Some(source));
+        eprintln!("source {source}: admitted roles remain static; exact input and ledger provenance recovered");
+    }
+    assert_eq!(std::fs::read(path).unwrap(), current);
+}
+
 impl CompletedInputReplayFixture {
     fn new() -> Self {
         Self::with_required_final(false)

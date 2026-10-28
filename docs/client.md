@@ -292,27 +292,66 @@ To understand updates and local JSON changes, read
 
 ## Experimental interaction and Test
 
-**Settings → Gestures** maps camera-recognized hand gestures to client
-commands. It includes camera selection, built-in mappings, custom gesture
-recording, and a preview. Camera access is required. Treat these controls as
+**Settings → Gestures** turns the camera into a second way to drive the
+client. It includes camera selection, command mappings, custom pose recording,
+and a live preview. Camera access is required. Treat these controls as
 experimental, particularly across different cameras and lighting.
 
-A swipe is a quick sideways flick with an open hand or two fingers; by default
-left goes Back and right goes Forward. It is judged by the hand's speed and
-straightness, so a frame lost to motion blur or a hand leaving the camera at
-speed still counts, slow sideways movement steps gesture focus instead, and the
-hand returning after a swipe is not read as a swipe the other way. Held poses
-fire only while the hand stays still. While Settings is open, the preview names
-each recognized gesture and its command, and commands run once Settings is
-closed. The preview also measures how many frames per second the camera really
-delivers and warns when that is too few for swipes; a dim room or a phone used
-as a camera can drop to a handful.
+Every gesture in Settings has a small looping illustration of the hand, a plain
+description, and its current command or effect.
+
+There is no hand cursor. Gestures move one visible focus ring between concrete
+targets — buttons, fields, tabs, list rows, and Home widgets:
+
+| Gesture | Effect |
+|---------|--------|
+| **Point** (index finger out) | Where the hand is in the camera view picks the target. The inner 80% of the view spans the whole window, so a hand in the outer 10% on any side reaches that edge of the window. Focus goes to the target nearest that point. Holding the hand past an edge scrolls the list under focus. |
+| **Pinch** (thumb to index, then release) | The ring fills while pinched; releasing selects the focused target. On a Home widget it opens the widget's own controls, and on a field it places the text cursor there. |
+| **Pinch and move** | Carries the focused Home widget; releasing drops it. |
+| **Throw** | Releasing a carried widget mid-motion hides it. |
+| **Two-hand pinch** | Spreading or closing both pinched hands resizes the focused widget; moving them together carries it. |
+| **Swipe left / right** (quick flick, open hand or two fingers) | Runs a mapped client command, Back and Forward by default. |
+| **Fist hold** | Runs a mapped client command, none by default. |
+
+Both hands are tracked at once, and each keeps its side as it moves or briefly
+leaves the frame. The pointing position is smoothed by an adaptive filter, and
+focus moves only to a target that is clearly closer and stays closer for a
+moment, so tremor near a border does not flip it. Pointing starts a moment
+after the pose settles, and a hand that blurs or leaves keeps the last target
+instead of teleporting focus. Focus stays inside an open dialog or menu. A
+pinch is judged by how close the thumb and index fingertips are relative to the
+size of the hand, with separate thresholds for closing and opening, and it does
+not depend on what the other fingers do. A small wobble while pinching still
+selects, and a pinch on a control that cannot move always selects when
+released. A pinch survives a few blurred or dropped frames, and a hand that
+leaves the camera mid-pinch cancels instead of selecting. A swipe is
+judged by speed and straightness, so a frame lost to motion blur still counts
+and the hand returning is not read as a swipe the other way. **Spatial widget
+control** turns carrying, resizing, and throwing on or off; focus and selection
+work without it.
+
+**Record gesture trace** saves a few seconds of raw hand landmarks for both
+hands, with every recognizer decision and no video, to `client/gesture-traces/`
+in the Home, and **Reveal in Finder** shows the file. Recording starts after a
+short countdown and continues if you leave Settings, so the moment that
+misbehaves can be captured where it happens. `node
+app/scripts/test-air-hand-control.cjs --trace <file>` replays a trace against
+the current recognizer and prints the recorded and replayed decisions side by
+side.
+
+Focus and selection also work inside Settings, so the preview can be tried in
+place. Mapped commands wait until Settings closes. The preview shows each
+tracked hand with its side and pose, the last recognized gesture and what it
+did, and the focused target. It also measures how many frames per second the
+camera really delivers and warns when that is too few; a dim room or a phone
+used as a camera can drop to a handful.
 
 These gestures are client input, like keyboard shortcuts. The camera recognizer
-emits a local event, which selects a client command or moves a Home widget.
-Switching a tab or dragging a widget does not send an artifact through the
-runtime. If a command submits a message or starts a call, that action enters
-the ordinary chat or voice interface path.
+emits local events that move client focus, run a client command, or arrange a
+Home widget. Moving focus, selecting a control, or carrying a widget does not
+send an artifact through the runtime. If a selected control or a command
+submits a message or starts a call, that action enters the ordinary chat or
+voice interface path.
 
 The repository also carries [AirHand](../registry/interface/world_hand_gesture_control/README.md),
 a macOS prototype for moving the pointer, clicking, and scrolling from a

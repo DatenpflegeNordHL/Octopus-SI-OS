@@ -44,6 +44,7 @@ const {
 const { createPaneWindowDragHost } = require("./paneWindowDrag.cjs");
 const { createClientWindowCloseHost } = require("./clientWindowClose.cjs");
 const { createClientContextMenuHost } = require("./clientContextMenu.cjs");
+const { revealGestureTrace, saveGestureTrace } = require("./gestureTraces.cjs");
 const { createClientAttachmentStagingStore, selectClientAttachments, stageClientAttachmentPaths } = require("./clientAttachments.cjs");
 const {
   downloadClientFileCopy,
@@ -3619,6 +3620,16 @@ ipcMain.handle("octopus:camera-access-status", async (_event, token) => {
   if (process.platform !== "darwin") return { granted: true, status: "browser-managed" };
   const status = systemPreferences.getMediaAccessStatus("camera");
   return { granted: status === "granted", status };
+});
+
+ipcMain.handle("octopus:gesture-trace-save", async (_event, token, text) => {
+  getClientAccessController().requireSession(token, ["live"]);
+  return saveGestureTrace({ root: clientProfileRoot, text });
+});
+
+ipcMain.handle("octopus:gesture-trace-reveal", async (_event, token, target) => {
+  getClientAccessController().requireSession(token, ["live"]);
+  return revealGestureTrace({ root: clientProfileRoot, target, shell });
 });
 
 ipcMain.handle("octopus:request-camera-access", async (_event, token) => {
