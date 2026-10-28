@@ -68,6 +68,16 @@ test("leaving before the delay cancels the pending open", async () => {
   assert.ok(!tooltip());
 });
 
+test("a measurement queued while leaving cannot reopen a closed tooltip", async () => {
+  await show();
+  await hover();
+  await React.act(async () => {
+    trigger().dispatchEvent(new w.MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body }));
+    w.dispatchEvent(new w.Event("resize"));
+  });
+  assert.ok(!tooltip(), "a late geometry update must keep the tooltip closed");
+});
+
 test("moving between triggers leaves only the latest tooltip and dragging opens none", async () => {
   const MessageTooltip = await compiled;
   await React.act(async () => root.render(React.createElement("div", { key: ++shows },

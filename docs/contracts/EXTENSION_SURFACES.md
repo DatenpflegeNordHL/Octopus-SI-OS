@@ -553,6 +553,12 @@ same clone, each with its own interface id and quiet period, only when its
 package was selected; a retried setup finds the armed trigger and creates
 nothing.
 
+Triggers also lists World sensor interfaces with active inbound run bindings,
+including event sources without a clock activation. Their receiving tasks and
+admitted deliveries come from run records and the ledger. An active binding is
+not evidence that an external event has arrived. Event sources expose no cron
+edit, pause or delete controls; their configuration belongs to their package.
+
 Home uses compact widgets as its ordinary visual presentation, including during
 voice calls. Longer results may span several focused widgets; long text belongs
 in a saved document. The correlated `open_file` client control reads a text file

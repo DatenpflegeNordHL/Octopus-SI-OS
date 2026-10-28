@@ -150,16 +150,11 @@ export function WorkspaceSetupOverlay({
 
   return (
     <main className="welcome" aria-labelledby="welcome-title">
-      <header className="welcome-top">
-        <div className="welcome-brand">
-          <img className="welcome-brand-mark" src="./octopus-logo.png" alt="" />
-          <span className="welcome-brand-name">Octopus&nbsp;OS</span>
-        </div>
-      </header>
+      <SetupHeader />
 
-      <div className="welcome-stage setup-stage" key={applying ? "applying" : activeStep}>
+      <div className="welcome-stage setup-stage" data-applying={applying || undefined} key={applying ? "applying" : activeStep}>
         {applying ? (
-          <ApplyingStep applyState={applyState} draft={draft} />
+          <ApplyingStep applyState={applyState} />
         ) : (
           <section className="setup-step">
             <span className="welcome-tag">{step.tag}</span>
@@ -502,7 +497,29 @@ function ReviewStep({ catalog, draft, agentPresets }: { catalog: WorkspaceSetupC
   );
 }
 
-function ApplyingStep({ applyState, draft }: { applyState: WorkspaceSetupApplyState; draft: WorkspaceSetupDraft }) {
+export function WorkspaceSetupProgress({ applyState }: { applyState: WorkspaceSetupApplyState }) {
+  return <main className="welcome" aria-labelledby="welcome-title">
+    <SetupHeader />
+    <div className="welcome-stage setup-stage" data-applying><ApplyingStep applyState={applyState} /></div>
+    <footer className="welcome-footer">
+      <div className="welcome-footer-side welcome-footer-left" />
+      <div className="welcome-footer-side welcome-footer-right">
+        <button className="welcome-next" type="button" disabled>Working…</button>
+      </div>
+    </footer>
+  </main>;
+}
+
+function SetupHeader() {
+  return <header className="welcome-top">
+    <div className="welcome-brand">
+      <img className="welcome-brand-mark" src="./octopus-logo.png" alt="" />
+      <span className="welcome-brand-name">Octopus&nbsp;OS</span>
+    </div>
+  </header>;
+}
+
+function ApplyingStep({ applyState }: { applyState: WorkspaceSetupApplyState }) {
   const failed = applyState.state === "failed";
   const running = applyState.state === "running";
   const shown = useShownPercent(running, applyState.percent);
@@ -521,7 +538,7 @@ function ApplyingStep({ applyState, draft }: { applyState: WorkspaceSetupApplySt
         <span className="welcome-tag">{failed ? "Needs attention" : "Account"}</span>
       )}
       <h1 id="welcome-title" className="welcome-title">
-        {failed ? "Setup needs attention" : applyState.label || `Creating ${draft.spaceName}`}
+        {failed ? "Setup needs attention" : applyState.label || "Preparing your space"}
       </h1>
       <p className="welcome-body" data-tone={failed ? "danger" : undefined}>
         {failed ? applyState.error : applyState.detail || "Your choices are being verified and applied. You can safely reopen Octopus if this window closes."}

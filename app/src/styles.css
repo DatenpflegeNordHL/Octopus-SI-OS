@@ -96,6 +96,10 @@
   animation: welcomeFade 380ms var(--ease);
 }
 
+.setup-stage[data-applying] {
+  animation: none;
+}
+
 .welcome-access-state {
   display: flex;
   flex: 1;

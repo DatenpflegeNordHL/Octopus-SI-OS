@@ -27,7 +27,6 @@ import { Glyph, type GlyphName } from "../IconGlyphs";
 import { ShellTooltip } from "../shell/ShellTooltip";
 import { ChatComposer } from "../chat/ChatComposer";
 import type { ProjectedFileSource } from "../chat/ProjectedFilePicker";
-import { AirHandVoiceController } from "./AirHandVoiceController";
 import { HomeCallControls } from "./HomeCallControls";
 import { HomeTurnActivity, homeTurnActivity, homeTurnAwaitsClientResult, homeTurnAwaitsFinalReply, homeTurnTerminalNotice } from "./HomeTurnActivity";
 import { projectHomeVoiceContext } from "./voiceCallArtifacts";
@@ -663,7 +662,6 @@ export function VoiceView({ accessProfile, activity, builtinWidgetSources, comma
           />
         ))}
       </div>
-      <AirHandVoiceController accessProfile={accessProfile} stageRef={widgetCanvasRef} />
 
       <AnimatePresence>
         {detailPanel ? (

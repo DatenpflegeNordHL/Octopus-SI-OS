@@ -21,6 +21,40 @@ function projectionFixture(fields = {}) {
     structureMemo: new Map(), ledgerMemo: new Map(), ...fields };
 }
 
+test('Triggers includes bound event sensors without treating them as cron activations', async (t) => {
+  const sensor = (id) => ({ id, interface_type: 'world', role: 'sensor', direction: 'inbound', source_names: ['issue.opened'] });
+  const projection = projectionFixture({
+    descriptors: { interface: [sensor('world_events'), sensor('world_unused'),
+      { ...sensor('world_provider'), role: 'provider' }], ee_template: [] },
+    runRecords: [
+      { run_id: 'task', checkpoints: [{ status: 'projected', interface: 'world_events' }] },
+      { run_id: 'old', checkpoints: [{ status: 'made', interface: 'world_unused' }] },
+    ],
+  });
+  const event = { ...movement(5, 'issue.opened', {}, { from: 'world_events', kind: 'InterfaceArrival' }),
+    invocation_metadata: { runtime: { run: 'task' } } };
+  const entry = { runId: 'task', chatInterfaceId: 'chat', surfaceRole: 'task' };
+  const store = projectionStore({
+    operatorOsScope: () => ({ client_runs: [{ run_id: 'task', interface_id: 'chat' }] }),
+    operatorChatRunIndex: async () => [entry], operatorChatTitle: async () => 'Review new issues',
+    readIndexedInterfaceArtifactRows: async (_projection, run, id, labels) => {
+      assert.equal(run, ''); assert.equal(id, 'world_events'); assert.equal(labels.size, 0);
+      return [event, { ...event, seq: 6, kind: 'DeliveryRefused' }];
+    },
+  });
+  t.after(() => store.close());
+  const rows = await store.scheduledInterfaceRows(projection);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].interface_id, 'world_events');
+  assert.equal(rows[0].valid, true);
+  assert.equal(rows[0].clone_eligible, false);
+  assert.equal(rows[0].schedule, undefined);
+  assert.equal(rows[0].last_movement_seq, 5);
+  assert.deepEqual(rows[0].event_source, { sources: ['issue.opened'], targets: [
+    { run_id: 'task', chat_interface_id: 'chat', title: 'Review new issues' },
+  ] });
+});
+
 test('trigger history groups delivery edges and uses the same task title as All tasks', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oct-trigger-history-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
